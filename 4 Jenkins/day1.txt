@@ -1,0 +1,114 @@
+======================
+JENKINS
+====================
+
+In General--> Jenkins called as CI/CD tool but,
+
+Jenkins is only used for CI --> take code --> build --> test
+
+Explain what is CI
+Continuous Integration = Continuous build + Continuous Test
+
+Developers continuously generate/write code (old + new)--> so we need to continuously build and test
+
+Maven does the same but it is manual, to automate use Jenkins
+
+Before CI, everything is manual process
+After CI, everything is automated
+
+
+What is CD ? Continuous Delivery / Deployment
+
+Continuous Delivery = Deployment Manually to Prod Env
+Continuous Deployment = Deployment Automatically to Prod Env
+
+Explain about Environments
+PRE-PROD
+--> Dev = Developers
+--> QA = Testers
+--> UAT = Client will use Apps and suggests
+
+PROD / Live
+--> PROD = Accessed by Users
+
+Continuous Delivery = Deploying application to Production manually
+Continuous Deployment = Deploying applications to Production automatically
+
+==========================================
+
+If I want to do CI / CD --> we use Pipelines
+
+PIPELINE
+
+Maven will do first few , compile , test and artifact but NOT DEPLOY
+Maven will do manual, but Jenkins will automate these steps
+
+=========================================
+
+JENKINS
+
+Its a free and open source tool (source code is available to use)
+Jenkins written in java
+its a platform independent (works on windows, Linux)
+It consists of Plugins
+We have community support
+It can automate entire SDLC
+It is owned by Sun micro system
+Previous we called Hudson and it was a paid version
+Later Oracle bought Hudson and made it free
+Later Hudson was renamed as Jenkins
+Inventor : Kohsuke Kawaguchi
+Port number : 8080
+Java: Java 11 / 17
+Default path : /var/bin/jenkins
+
+===========================
+Alternatives : GO CI, Circle CI, Tarvis, Semaphore, Buddy Build Master, Gitlab, Harness, argoCD
+
+CLOUD : AWS CodePipeline, Azure Pipeline
+
+==================================
+
+
+SETUP : Launch EC2 instance Amazon Linux 2
+
+In SG, allow protocols, 8080, 80 http
+
+To setup Jenkins, we need to take code from git , build using maven , that's the reason we install below all
+
+Step 1: installing git, java 17 and maven
+-----------------------------------------
+
+yum install git java-17-amazon-corretto maven -y
+
+Step 2: Getting the REPO (Jenkins.io --> download --> RedHat) - show in browser Jenkins.io --> LTS --> Redhat
+------------------------------------------------------------------------------------------------------------
+sudo wget -O /etc/yum.repos.d/jenkins.repo https://pkg.jenkins.io/redhat-stable/jenkins.repo
+
+sudo rpm --import https://pkg.jenkins.io/redhat-stable/jenkins.io-2023.key
+
+#STEP-3: DOWNLOAD and install JENKINS
+----------------------------------------
+
+yum install jenkins -y
+
+#STEP-4: RESTARTING JENKINS (when we download service it will on stopped state)
+----------------------------------
+
+systemctl start jenkins.service
+
+systemctl status jenkins.service
+
+NOTE: chkconfig jenkins on
+above command will make jenkins service automatically restart itself when sevrver is stopped and started
+
+CONNECTION:
+public-ip-server:8080 (browser)
+cat /var/lib/jenkins/secrets/initialAdminPassword
+
+give this password in browser and install plugins
+give sample usernames and passwords --> start Jenkins
+
+For logs:
+
+journalctl -u jenkins

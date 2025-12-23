@@ -1,0 +1,349 @@
+Transfer files between Linux Servers using SCP command
+===================================================
+
+SCP - Secure Copy Protocol , is a command line tool used for securely transferring files between local and a remote host or between
+2 remote hosts using SSH for Encryption and authentication
+
+Syntax
+======
+scp /local/file username@remotehost:/path/
+scp -i key-pair-name.pem /path/my-file.txt ec2-user@privateip:/path/
+
+How to do
+----------
+Launch another RedHat Linux EC2
+
+create a pem file  vi MyKey.pem
+copy paste the data
+
+chmod 400 pemfile
+
+touch file1
+
+mkdir test
+
+scp -i MyKey.pem file1 ec2-user@172.31.19.242:/tmp/
+
+scp -r -i MyKey.pem test/ ec2-user@172.31.6.82:/home/ec2-user/  ---> for dir recursive
+
+If you want to copy zip files
+-------------------------------
+scp -i MyKey.pem test.zip ec2-user@172.31.6.82:/home/ec2-user/
+
+Login to another EC2 and check the files.
+
+
+=================================================
+
+Setup Apache WebServer on Linux
+
+====================================================
+
+Launch RedHat Linux EC2 instance
+
+
+yum install httpd -y
+
+cat /etc/httpd/conf/httpd.conf   --- all apache configurations will be here (changing port, listen 80 or 8080)
+
+cd /var/www/html/
+
+vi index.html
+
+https://www.w3schools.com/howto/howto_css_contact_form.asp
+
+paste some sample html code
+
+systemctl status httpd
+systemctl start httpd
+
+
+================================================
+
+Launch RedHat Linux EC2 instance
+
+Setup Nginx on Linux as WebServer
+----------------------------
+
+What is nginx?
+
+It is a web-server that accepts requests via http/s and respond to display website content through storing, processing, and delivering webpages to users
+
+This can also be used as Reverse Proxy, Load Balancer etc
+
+sudo -s
+
+yum install -y nginx
+
+nginx -version
+
+systemctl status nginx
+
+cat /etc/nginx/nginx.conf  -- contains nginx configurations
+cd /usr/share/nginx/html
+
+cat index.html
+
+Put IP in Browser
+
+cd /var/log/nginx/
+
+============================================================
+
+Setup Nginx on Linux as Reverse Proxy
+===========================================================
+
+What is a proxy server?
+
+In computer networking, a proxy server is a server application that acts as an intermediary between a client requesting a resource and the server providing that resource.
+
+What is a reverse proxy server?
+
+A proxy service which takes a client request, passes it on to one or more servers.
+Proxying is typically used to distribute the load among several servers,
+seamlessly show content from different websites,
+or pass requests for processing to application servers over protocols other than HTTP.
+
+Client ------> Reverse Proxy(EC2 with Nginx) -----> App Server(EC2 with httpd)
+
+Launch RedHat Linux EC2 instance having nginx reverse proxy and another server which has any website (httpd with index.html)
+
+Nginx EC2 instance - use previous machine remove nginx : yum remove nginx
+
+yum install -y nginx
+
+cd /etc/nginx/
+vi nginx.conf
+
+ location / {
+        proxy_pass http://172.31.23.194:80/;
+        }
+
+systemctl restart nginx
+
+Put nginx IP in browser, you get error
+
+check error in logs
+
+cd /var/log/nginx
+cat error.logs
+
+Permission denied) while connecting to upstream
+
+Solution
+-----
+list of all httpd SElinux Boolean
+getsebool -a | grep httpd
+setsebool httpd_can_network_connect on -P
+
+Put nginx IP in browser it will redirect to App Server
+
+
+
+What is Forward Proxy?
+-----------------------
+
+A forward proxy, also referred to as a “proxy server,” or simply a “proxy,” is a server that sits in front of one or more client computers and serves as a conduit between the clients and the internet. The forward proxy receives the request before sending it on from the client machine to the internet resource. On behalf of the client machine, the forward proxy then sends the request to the internet and returns the response.
+
+A forwards proxy is mostly used for:
+
+Client Anonymity
+Caching
+Traffic Control
+Logging
+Request/Response Transformation
+Encryption
+
+                             Forward Proxy                               Reverse Proxy
+
+Purpose     Provides anonymity and caching to clients     Improves server performance, load balancing, and security
+
+Location    Between the client and the internet             Between the internet and server
+
+Visibility    The client is aware of the proxy             The server is not aware of the proxy
+
+Configuration    The client must be configured to use proxy     Server must be configured to use proxy use
+
+Use cases     Bypassing content filters,
+                accessing restricted content                     Load balancing, caching, SSL/TLS offloading, web application firewall
+Examples     Squid, Proxy, Tor                             Nginx, Apache, HAProxy
+
+
+
+==================================
+Granting access to the server without a password.
+Launch Amazon Linux 2 -  2 Linux EC2 instances
+==========================================
+
+run commands on both Server-1 and Server-2
+
+sudo -i
+hostnamectl set-hostname server-1
+sudo -i
+
+## first set the password for root
+passwd root  
+
+set new password: root123456
+
+## enable all server to login as root
+
+vi /etc/ssh/sshd_config (38 & 61 uncomment both lines) PermitRootLogin yes | PasswordAuthentication yes
+systemctl restart sshd
+systemctl status sshd
+hostname -i -- to see the private ip
+
+On Server -1
+==========
+
+cd /
+
+ssh-keygen
+
+ls -al
+
+ll .ssh
+
+syntax:
+ssh-copy-id root@private ip of Server-2 -- > yes -- > password -- > ssh private ip -- > ctrl d
+
+
+ssh-copy-id root@172.31.17.111
+
+
+ssh root@172.31.17.111
+
+==================
+
+
+FTP Setup
+
+AMazon Linux 2 - Server 2 - FTP Server
+
+Client(FileZilla) ---------------> FTP ----------------> EC2 Server (vsftpd)
+
+
+First check if vsftpd service is installed or not
+
+rpm -qa | grep vsftpd
+
+yum install -y vsftpd
+
+cd /etc/vsftpd/
+
+Always good in real time to take backup of current file vsftpd.conf
+
+cp  vsftpd.conf vsftpd-bkp.conf
+
+vi vsftpd.conf
+
+anonymous_enable = NO   [Enable anonymous access if needed (default is NO):]
+local_enable=YES       [Allow local users to log in:]
+write_enable=YES        [Enable file uploads]
+chroot_local_user=YES   [Chroot users to their home directory (for security)]
+allow_writeable_chroot=YES  [Add this line]
+local_root=/home/ftpuser/ftp  [Add this line]
+
+
+pasv_enable=YES
+pasv_min_port=21000
+pasv_max_port=21010
+pasv_address=<your_public_ip>
+
+
+
+
+systemctl start vsftpd
+systemctl enable vsftpd
+
+Create FTP Users
+----------------
+sudo adduser ftpuser
+sudo passwd ftpuser
+
+Set permissions for the FTP directory:
+-------------------------------------
+
+sudo mkdir -p /home/ftpuser/ftp/files              [Create directory for file transfers]
+sudo chown -R ftpuser:ftpuser /home/ftpuser/ftp    [Changing ownership ftpuser is user and ftpuser is also a group]
+sudo chmod 755 /home/ftpuser                       [Changing permissions, giving full permissions to directory]
+sudo chmod 755 /home/ftpuser/ftp
+
+Create a writable subdirectory:
+------------------------------
+sudo chmod 755 /home/ftpuser/ftp/files
+
+Install firewalld
+---------------
+
+yum install -y firewalld
+
+systemctl restart firewalld
+
+sudo firewall-cmd --permanent --add-service=ftp
+sudo firewall-cmd --reload
+
+sudo firewall-cmd --permanent --add-port=21000-21010/tcp
+sudo firewall-cmd --reload
+
+sudo systemctl start vsftpd
+sudo systemctl enable vsftpd
+
+If SELinux is enabled, you might need to allow FTP access to user home directories:
+
+sudo setsebool -P ftp_home_dir 1
+
+
+sudo cat /var/log/vsftpd.log
+
+Open FileZilla --> Host=PublicIP, Username = ftpuser , password = root123456 port= 21
+
+
+
+
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+Daily Lifesavers: 
+
+• ps aux | grep - Find that process 
+• lsof -i :port - Who's on my port? 
+• df -h - Disk space check 
+• kubectl get pods | grep error - K8s quickfix
+
+Logs Hunting: 
+
+• tail -f /var/log/* - Real-time watching 
+• journalctl -fu - SystemD logs 
+• grep -r "error" - Find all errors 
+• less +F - Better than tail
+
+Container Magic: 
+
+• docker ps --format - Clean output 
+• docker stats - Resource check 
+• docker exec -it - Jump inside
+
+Performance: 
+
+• htop - Visual system monitor 
+• iostat -xz 1 - Disk I/O stats 
+• free -h - Memory usage
+
+Network Debugging: 
+
+• curl -v - HTTP details 
+• ss -tunlp - Socket stats 
+• dig +short - Quick DNS
+
+ Productivity Hacks: 
+• sudo !! - Repeat with sudo 
+• ctrl+r - Search history 
+• alias - Custom shortcuts
+
+
+
+
+
+
+
+

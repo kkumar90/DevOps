@@ -1,0 +1,198 @@
+================================
+Project on FreeStyle Job - Deployment on Tomcat
+=================================
+
+CODE --> BUILD --> TEST --> ARTIFACT --> Deployment
+
+1 Server Jenkins
+Another server for Tomcat
+
+Now lets deploy our application war file on tomcat
+
+Launch Amazon Linux 2 instance and install tomcat manually ---
+
+
+Tomcat Setup
+============
+
+Launch amazon Linux 2 and install tomcat manually first and then automatically using script
+
+All apache software are available in http://dlcdn.apache.org --> tomcat --> tomcat-10--> v10.1.42--> bin--> apache-tomcat-10.1.42.tar.gz
+
+Step1: install java
+-------------------
+amazon-linux-extras install java-openjdk11 -y
+
+Step 2: download tomcat
+----------------------
+yum install -y wget
+
+wget https://dlcdn.apache.org/tomcat/tomcat-10/v10.1.42/bin/apache-tomcat-10.1.42.tar.gz
+
+Step3: Extract
+--------------
+tar -zxvf apache-tomcat-10.1.42.tar.gz
+
+Step4: Configure user, passwords and roles
+-------------------------------------------
+ --> cd apache-tomcat-10.1.42/conf/
+ --> vi tomcat-users.xml
+     Add new files --> copy 3 lines and paste, line 56
+     <role rolename="manager-gui"/>
+     <role rolename="manager-script"/>
+     <user username="tomcat" password="root123" roles="manager-gui,manager-script"/>
+
+Step 5: Delete line 21 and 22 -- if not delete, we need to give public ip
+------------------------------
+  --> cd apache-tomcat-10.1.42/webapps/manager/META-INF
+  --> vi context.xml
+       :22
+
+Step 6: Start Tomcat
+--------------------
+  --> cd apache-tomcat-10.1.42/bin
+  --> sh startup.sh
+
+Connection
+=========
+http://IP:8080
+manager apps --> username: tomcat, password: root123
+
+
+Install Plugin
+-------------
+In Jenkins server first install a plugin(Deploy to container) to integrate with Tomcat
+
+Create a Job
+------------
+
+--> Create a New item --> Free Style --> Source Code Management --> GIT --> https://github.com/ReyazShaik/java-project-maven-new.git
+
+--> Build Steps --> Invoke top level maven target --> clean package
+
+--> Post Build actions -->
+ Deploy war/ear to a container --> **/*.war
+ Context path = mywebapp
+--> Add container --> Select tomcat 9 --> credentials --> Add Jenkins --> username=tomcat, password= root123, ID = tomcatcred    
+    --> tomcat url = http://35.154.10.118:8080/ (ec2 url)
+
+--> Build Now
+
+--> Go to tomcat page , refresh /mywebapp
+
+
+Now Store the Artifacts to S3
+================================
+🔹 Step 1: Install the Plugin
+
+Go to Jenkins Dashboard → Manage Jenkins → Manage Plugins.
+
+Search for "S3 publisher" and "Pipeline: AWS Steps"(optional) install it.
+
+🔹 Step 2: Configure AWS Credentials
+Go to Manage Jenkins → System → Amazon S3 profiles --> ProfileName=s3creds --> access key and secret key - Save
+
+Go to your Jenkins Job → Configure -->  
+ --> Post-build Actions.
+ → Select "Publish artifacts to S3 bucket".
+ --> Source = **/*.war
+ --> Destination Bucket = jen-test-me-reyaz/
+ --> Bucket Region = ap-south-1
+
+
+
+Pipeline --> Series of steps
+Pipelines are written in Groovy language
+We can see the steps in visuals
+Pipeline is used to automate the work
+
+CODE --> BUILD --> TEST --> ARTIFACT --> Deployment
+
+Types : Scripted and Declarative(commonly used)
+
+Scripted   ||   Declarative
+===========================
+SHORT        LONG
+NO Stages    Stages
+Start Node    Start with pipeline
+
+
+Pipeline Syntax
+==============
+
+To write the pipeline we use DSL (Domain specific Language)
+
+We use GROOVY Script for Jenkins pipeline
+
+It consists of blocks that includes stages : stages are stage1 = code , stage2 = build, stage3 = test, stage4 = artifact, stage5= deployment
+it includes () & {}
+
+
+Create a job -- select Pipeline --> under script --> use below or --> try sample pipeline and explain
+
+short cut to remember how to create a pipeline :
+PASSS -  PAS3
+Pipeline,
+Agent,
+Stages,
+Stage ,
+Steps
+
+Below pipeline has one stage
+
+pipeline {
+    agent any
+   
+    stages {
+        stage('one') {
+            steps {
+                sh 'touch file1'
+            }
+        }
+    }
+}
+
+--> now, file1 is created at cd /var/lib/jenkins/workspace/
+
+==============
+Now create a CI Pipeline
+==============
+
+CODE --> BUILD --> TEST -->Code Review --> ARTIFACT --> Deployment
+
+
+pipeline {
+    agent any
+    stages {
+        stage('Clone Git Repo') {
+            steps {
+                echo 'Cloning Git Repository'
+            }
+        }
+        stage('Building') {
+            steps {
+                echo 'Building the Project'
+            }
+        }
+        stage('Code Test') {
+            steps {
+                echo 'Testing the Project'
+            }
+        }
+        stage('Code Review') {
+            steps {
+                echo 'Code Quality Checking'
+            }
+        }
+        stage('Artifact') {
+            steps {
+                echo 'Generating war file'
+            }
+        }
+        stage('Deployment') {
+            steps {
+                echo 'Code is deployed'
+            }
+        }
+    }
+}
