@@ -1,0 +1,440 @@
+=============
+DOCKER SWARM - High Availability
+=============
+
+
+
+If container deleted we can re-create manually or using docker-compose, by if the docker host is terminated ?
+
+Docker swarm uses multiple host machines
+
+
+Its an orchestration tool for containers.
+It is cluster used to manage containers.
+Cluster means group of servers.
+Cluster will have manager and worker nodes.
+Multiple servers will have same container.
+If we can access container from one server we can access from another server.
+Manager node will distribute containers worker node.
+Worker node will maintain containers.    
+port : 2377
+Worker nodes join
+
+
+SETUP:
+1. CREATE 3 SERVERS AND INSTALL DOCKER
+2. SET HOSTNAMES (hostnamectl set-hostname manager/worker1/worker2)
+3. GO TO MANAGER NODE (docker swarm init) -- > copy token to all nodes
+4. docker node ls
+
+
+Install docker in master, node1 and node2
+
+yum install -y docker
+
+systemctl start docker
+
+
+--> docker swarm init  -- [ In manager node ]
+
+It will generate a token and command, run below command in all worker nodes
+
+In Node1
+--------
+docker swarm join --token SWMTKN-1-5knz8d9ypaqvd6s2sm1mlyy8d9bznuwemwm18dbz5p7jfxplad-b35y8xpsgq2xgza04913lv91z 172.31.27.158:2377
+
+In Node2
+--------
+docker swarm join --token SWMTKN-1-5knz8d9ypaqvd6s2sm1mlyy8d9bznuwemwm18dbz5p7jfxplad-b35y8xpsgq2xgza04913lv91z 172.31.27.158:2377
+
+Now create a container in manager node, it should create in all worker nodes
+
+On Manager
+----------
+
+docker node ls    
+
+-- docker run -itd --name contl -p 81:80 trainerreyaz/ib-image     [use dockerhub image]
+
+But the above command will create a container only in manager as we used just docker command. If we want to have container in all nodes use docker service
+
+
+
+-- docker service create --name internetbanking --replicas 3 -p 81:80 trainerreyaz/ib-image:latest
+
+-- docker ps -a
+
+Now see containers in all worker nodes, go to each workernodes and do ps -a
+
+docker ps -a
+
+Access application on all 3 servers http://IP:81  , http://workernodeip:81
+
+
+-- docker service ls
+
+-- docker service ps internetbanking
+
+-- docker service logs internetbanking
+
+-- docker service inspect internetbanking
+
+-- docker service scale internetbanking=10    --- it will scale out , equally distributed to all worker nodes including manager
+
+-- docker service scale internetbanking=3  -- it will scale down, it uses LIFO,
+
+give example again
+docker service scale internetbanking=15
+docker service scale internetbanking=5
+
+-- docker service rollback internetbanking  --- going back to how many containers was there before
+it will show 15
+again rollback it will show 5
+
+scenario:
+--------
+if we delete the container in worker node docker kill containerid , docker rm containerid and check the http://IP:81 it still work
+because, nodes has self healing , if you do docker ps -a  , you can see a new container created automatically
+
+delete the container again, it will re-create it automatically
+docker stop contids
+docker rm contids
+
+docker ps -a
+
+--> now in manager node delete the service which contain containers
+
+-- docker service ls
+
+-- docker service rm internetbanking
+
+-- docker service ls
+
+if you want to re-create  
+
+docker service create --name loan --replicas 3 -p 82:80 trainerreyaz/loans-image:latest
+
+docker service ps loan
+
+docker service create --name mobilebanking --replicas 3 -p 83:80 trainerreyaz/mb-image:latest
+
+
+********** No auto-scaling and load balancer in DockerSwarm that why we use Kubernetes
+
+Note: If entire swarm is not working
+docker swarm init --force-new-cluster
+
+===================================================================
+Example:
+
+docker service create --name jenkins --replicas 3 -p 8080:8080 jenkins/jenkins:lts   ---> create a new service called Jenkins and setup Jenkins containers in all nodes
+
+jenkins/jenkins:lts -> username/image:tag
+
+
+=============================================================================================================================================
+
+Cluster Activities
+=================
+
+docker swarm leave  --> this will leave the swarm, do this in worker node
+if you want to join back -> use the same join command to join back to swarm (up arrow or history command) or
+
+docker swarm join-token manager --> this command will generate a token to join
+docker swarm join-token worker --> this command will generate a token for worker nodes to join
+
+docker node ls
+
+docker node rm nodeid --> it will remove the down node
+
+===================
+Docker Networking
+===================
+
+Docker networking are used to make communication between the multiple containers that are running on same or different docker hosts
+
+Different Docker Networks
+ --> Bridge Network = Same hosts (if 2 containers wants to communicate with each other in same docker host)
+ --> Overlay Network = different hosts (2 containers want to communicate with each other in different docker hosts)
+ --> Host Network = if you want to use HOST meaning EC2 networking
+ --> None Network = if you dont want to expose any application
+
+
+-- docker node ls
+
+-- docker network ls
+
+Explain Name and Driver as per output
+
+-- docker network create reyaz
+
+-- docker network ls
+
+
+-- docker run -itd --name cont1 -p 81:80 nginx:latest
+-- docker run -itd --name cont2 -p 82:80 nginx:latest
+
+-- docker inspect cont1
+-- docker inspect cont2
+
+BY default networking part it say Bridge by default
+
+Lets change the network for cont1 to Reyaz network that we created before
+
+-- docker network connect reyaz cont1  
+-- docker network connect reyaz cont2
+
+docker network inspect Reyaz  --> this will show cont1 and cont2 in same network
+
+Lets see if 2 containers can communicate each other or not
+
+Get the IP address of cont1
+ 
+ -- docker inspect cont1
+
+
+first connect to cont2
+
+-- docker exec -it cont2 /bin/bash
+
+now you are in cont2
+
+ping IP of cont1 --> ping will not work
+
+apt update
+apt install iputils-ping -y
+ping cont1ip
+
+ctrl p q
+
+docker network disconnect Reyaz cont2 --> if you want to remove cont2 from Reyaz network
+
+docker network inspect Reyaz  --> now you cannot see cont2 in that json
+
+docker network prune --> this will delete unused networks
+
+docker system prune --> also delete the networks
+
+=========================
+Docker Python FLask Project
+=========================
+
+yum install -y docker
+
+yum install -y git
+
+git clone https://github.com/ReyazShaik/docker-python-flask-project.git
+
+cd docker-python-flask-project
+
+Show files
+
+vi Dockerfile
+
+FROM python:3.6
+COPY . /app
+WORKDIR /app
+RUN pip install -r requirements.txt
+#ENTRYPOINT ["python"]
+EXPOSE 5000
+CMD ["python", "app.py"]
+
+Create image
+-----------
+
+docker build -t pythonapp .
+
+Create Container
+----------------
+docker run -d -p 5000:5000 pythonapp
+
+
+http://ip:5000
+
+
+to remove service from docker swarm
+
+docker service rm servicename
+
+================================
+Docker Swarm - Managing Secrets
+================================
+A secret is an information that should be kept hidden from unauthorized users and applications. Examples of secrets include usernames, passwords, private keys, certificates, and resource names and locations.
+
+vi db_password.txt
+username=Reyaz
+password=DnA@123
+
+docker secret create db_password db_password.txt
+
+docker secret ls
+docker secret inspect db_password
+
+Example 1: Using the command line interface
+-------------------------------------------
+
+docker service create --name mynginx --secret db_password nginx:latest
+
+docker ps
+
+docker exec 7be95f99dbad cat /run/secrets/db_password
+
+Example 2: Using docker compose file
+-------------------------------------
+
+vi docker-compose.yml
+
+version: '3.8'
+ 
+services:
+  db:
+    image: postgres:latest
+    environment:
+      POSTGRES_USER: webuser
+      POSTGRES_PASSWORD_FILE: /run/secrets/db_password
+      POSTGRES_DB: webdatabase
+    secrets:
+      - db_password
+
+  adminer:
+    image: adminer:latest
+    ports:
+     - 8080:8080
+
+secrets:
+  db_password:
+    file: db_password.txt
+
+
+docker stack deploy --compose-file docker-compose.yml myapp
+
+Docker Compose: Single Host
+Docker Stack: Multi Node Cluster. TO run stack we need docker swarm setup
+
+docker exec -it ba1ffcadfa4a /bin/bash
+
+http://EC2IP:8080
+
+docker stack rm myapp
+
+docker secret rm db_password
+
+
+The secrets section in the docker compose file should be updated to tell the docker engine that the secret dp_password is created outside the compose file:
+
+secrets:
+  db_password:
+    external: true
+
+
+
+Replicated Service vs Global Service
+=====================================
+
+Replicated Service
+------------------
+Scaling up or down by giving a desired number of replicas
+
+It does not guarantee to run one replica on each node.
+
+After deleting a worker node, it will still distribute the same number of replicas mentioned while running to the available nodes.
+
+Applications are horizontally scaled up or down.
+
+Example: A web server has 5 replicas.
+
+Global Service : If we want every node to have a container which has a some service to run.
+--------------
+A global service in Docker Swarm is a service that runs a single task/container on each node in a swarm. Global services are used to monitor containers that want to run on a Swarm node.
+
+Can not scale up or down by giving a desired number.
+
+It guarantees to run one replica on each node.
+
+After deleting a node, the total replica number will decrease by one.
+
+Ideal for those that need one instance per node, like a monitoring agent.
+
+Example: A log collector is running on each node to collect logs.
+-------------------------------------------------------------------
+In the below example, we are not mentioning any replicas, but as it is global service, it will create a replica in all nodes
+
+vi docker-compose.yml
+
+version: "3.8"
+services:
+  global-nginx:
+    image: nginx
+    deploy:
+      mode: global
+    ports:
+      - "80:80"
+
+docker stack deploy -c docker-compose.yml global-stack
+
+docker service ls
+
+Command
+---------
+
+docker service create --name nginx-global \
+  --mode global \
+  --publish 80:80 \
+  nginx
+
+
+docker service ps nginx-global
+
+=
+Distroless Images in Docker : Docker on Diet :-)
+==========================
+
+Distroless images are minimal container images that contain only the necessary runtime dependencies for an application—without including an entire Linux distribution (like Debian or Ubuntu). This makes them:
+
+✅ Smaller (Reduced attack surface & faster deployment)
+✅ More Secure (Fewer vulnerabilities, no package managers, shells, or extra tools)
+✅ Efficient (Uses fewer resources)
+
+No, Distroless images are not available on Docker Hub.
+
+Instead, they are hosted on Google Container Registry (GCR) under:
+
+gcr.io/distroless/base
+gcr.io/distroless/cc
+gcr.io/distroless/python3
+gcr.io/distroless/nodejs
+gcr.io/distroless/java
+
+
+Pull the images , tag it and push to dockerhub
+
+============================================
+Implementing Multi-Stage Builds:
+============================================
+
+A multi-stage build utilizes multiple FROM statements within a single Dockerfile, each initiating a new build stage. Artifacts from previous stages can be selectively copied into subsequent ones.
+
+vi Dockerfile
+
+# Code template to get you started For Multistage Dockerfile
+
+# Build stage with development tools
+FROM maven:3.5-jdk-8 as build
+WORKDIR /app
+COPY . .
+RUN mvn clean package
+
+#FInal Stage
+FROM tomcat:8.0.20-jre8
+COPY --from=build /app/target/maven-web-app*.war /usr/local/tomcat/webapps/maven-web-application.war
+
+
+docker build -t multiimage .
+
+
+i didn't tried this
+docker build --target build -t your-image-name .
+
+==========================================
+What is dockerfile. local?
+While the primary Dockerfile is often used for production environments to ensure optimized, secure, and reliable applications, dockerfile.local is the practice that has been established by the majority of development teams for local development environments. This file permits developers to create a Dockerfile specifically for their development needs such as mounting local directories, installing development dependencies, and setting environment variables suited for their local machine.

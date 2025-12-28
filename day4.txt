@@ -1,0 +1,339 @@
+Load Balancing Project with Docker-Compose
+==========================================
+📌 Nginx Load Balancer - Dockerfile Setup
+--------------------------------------
+
+
+                     Container     --- Container1- backend1
+User --------> NGinx Load Balancer --- Container2- backend2
+                                   --- Container3- backend3
+
+We need image for Nginx LB, for that we need Dockerfile, and we take other account dockerhub image for backend
+
+This Dockerfile will set up Nginx as a Load Balancer for multiple backend services inside Docker.
+
+Step 1: Create a Dockerfile to generate image for Nginx LB
+Step 2: Create nginx.conf locally and copy to containers through docker-compose
+Step 3: Create docker-compose file to create containers in one shot
+
+1️⃣ Create the Dockerfile
+---------------------
+
+vi Dockerfile
+# Use the official Nginx image
+FROM nginx:latest
+
+# Remove default config and copy custom nginx.conf
+RUN rm /etc/nginx/conf.d/default.conf
+COPY nginx.conf /etc/nginx/conf.d/
+
+# Expose port 80
+EXPOSE 80
+
+# Start Nginx
+CMD ["nginx", "-g", "daemon off;"]
+
+
+
+is used to keep Nginx running in the foreground when running inside a Docker container.
+🔹 Why is daemon off; Needed?
+By default, Nginx runs as a background (daemon) process.
+In a Docker container, the main process must stay in the foreground.
+If Nginx runs as a daemon, Docker thinks the container has exited.
+Setting "daemon off;" prevents it from running in the background, keeping the container alive
+
+
+
+2️⃣ Create the Nginx Load Balancer Config (nginx.conf)
+------------------------------------------
+
+vi nginx.conf
+
+# Define the upstream backend servers
+upstream backend {
+    server backend1:5000;
+    server backend2:5001;
+    server backend3:5002;
+}
+
+server {
+    listen 80;
+
+    location / {
+        proxy_pass http://backend;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+
+3️⃣ Create a docker-compose.yml (Optional)
+-------------------------------------
+
+First install docker-compose
+
+vi dockercompose.sh
+
+sudo curl -L "https://github.com/docker/compose/releases/download/1.29.1/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+ls /usr/local/bin/
+sudo ln -s /usr/local/bin/docker-compose /usr/bin/docker-compose
+sudo chmod +x /usr/local/bin/docker-compose
+docker-compose version
+
+sh dockercompose.sh
+
+
+
+vi docker-compose.yml
+
+version: '3.8'
+services:
+  nginx:
+    build: .
+    container_name: nginx-lb
+    ports:
+      - "80:80"
+    depends_on:
+      - backend1
+      - backend2
+      - backend3
+
+  backend1:
+    image: ghcr.io/benc-uk/python-demoapp
+    container_name: backend1
+    expose:
+      - "5000"
+
+  backend2:
+    image: ghcr.io/benc-uk/python-demoapp
+    container_name: backend2
+    expose:
+      - "5001"
+
+  backend3:
+    image: ghcr.io/benc-uk/python-demoapp
+    container_name: backend3
+    expose:
+      - "5002"
+
+
+docker-compose up --build -d
+docker-compose ps
+
+(or)
+
+docker build -t nginx-lb .
+docker run -d -p 80:80 --name nginx-lb nginx-lb
+
+http://IP
+
+
+✅ Explanation:
+
+Nginx Load Balancer (nginx-lb) forwards traffic to backend1, backend2, and backend3.
+Each backend service listens on different ports.
+
+================================================================
+📌 Docker Load Balancing with Python Application using Nginx
+===============================================================
+
+✅ Deploy multiple Python Flask applications as backend services.
+✅ Use Nginx as a load balancer to distribute traffic.
+✅ Use Docker Compose for easy deployment.
+
+
+1️⃣ Create the Python Flask App (app.py)
+==================================
+vi app.py
+
+from flask import Flask
+import socket
+
+app = Flask(__name__)
+
+@app.route('/')
+def hello():
+    return f"Hello from {socket.gethostname()}!"
+
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=5000)
+
+2️⃣ Create requirements.txt
+====================
+
+vi requirements.txt
+flask
+
+3️⃣ Create the Python App Dockerfile
+==============================
+
+vi Dockerfile
+
+# Use Python base image
+FROM python:3.9
+
+# Set working directory
+WORKDIR /app
+
+# Copy and install dependencies
+COPY requirements.txt .
+RUN pip install -r requirements.txt
+
+# Copy the application code
+COPY . .
+
+# Expose the port Flask runs on
+EXPOSE 5000
+
+# Start the Flask app
+CMD ["python", "app.py"]
+
+
+4️⃣ Create Nginx Load Balancer Config (nginx.conf)
+=======================================
+vi nginx.conf
+
+# Define the upstream backend servers
+upstream backend {
+    server backend1:5000;
+    server backend2:5000;
+    server backend3:5000;
+}
+
+server {
+    listen 80;
+
+    location / {
+        proxy_pass http://backend;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+
+
+5️⃣ Create docker-compose.yml
+=========================
+
+vi docker-compose.yml
+
+version: '3'
+
+services:
+  nginx:
+    image: nginx:latest
+    container_name: nginx-lb
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf
+    depends_on:
+      - backend1
+      - backend2
+      - backend3
+
+  backend1:
+    build: .
+    container_name: backend1
+    expose:
+      - "5000"
+
+  backend2:
+    build: .
+    container_name: backend2
+    expose:
+      - "5000"
+
+  backend3:
+    build: .
+    container_name: backend3
+    expose:
+      - "5000"
+
+
+docker-compose up -d --build
+
+docker ps -a
+
+http://IP
+
+
+
+=======================
+DOCKERHUB
+=======================
+
+
+docker images
+
+instead storing images in local docker host , push to dockerhub
+
+go to docker and signup
+
+First lets have all Internetbanking, mobilebanking, Insurance and Loans images locally
+
+yum install -y git
+
+git clone https://github.com/ReyazShaik/hdfcwebsite.git
+
+-- cd hdfcwebsite
+
+-- cd internetbanking
+
+Here already index.html is available, just create a Dockerfile
+
+vi Dockerfile
+
+FROM ubuntu
+RUN apt update -y
+RUN apt install apache2 -y
+COPY index.html /var/www/html
+CMD ["/usr/sbin/apachectl", "-D", "FOREGROUND"]
+
+-- docker build -t internetbanking:v1 .
+
+
+Do the same for Mobilebanking, Insurance and Loans
+
+
+[Lets first tag our image]
+
+-- docker tag internetbanking:v1 trainerreyaz/ib-image
+
+-- docker push trainerreyaz/ib-image --> it will fail, no authentication
+
+-- docker login
+
+    username:
+    password:
+
+-- docker push trainerreyaz/ib-image
+
+**** Now see the images in dockerhub
+*** One time docker login is enough
+
+docker tag mobilebanking:v1 trainerreyaz/mb-image
+docker push trainerreyaz/mb-image
+
+docker tag insurance:v1 trainerreyaz/insurance-image
+docker push trainerreyaz/insurance-image
+
+docker tag loans:v1 trainerreyaz/loans-image
+docker push trainerreyaz/loans-image
+
+--- Now all your images are in dockerhub, just delete the images from local docker host and you can get them from dockerhub again
+
+-- docker rmi -f $(docker images -aq)
+
+-- docker pull trainerreyaz/ib-image
+-- docker pull trainerreyaz/mb-image
+-- docker pull trainerreyaz/insurance-image
+-- docker pull trainerreyaz/loans-image
+
+Now pull images from dockerhub
+
+-- docker pull trainerreyaz/ib-image:latest
+
+-- docker run -itd --name cont1 -p 80:80 trainerreyaz/ib-image:latest

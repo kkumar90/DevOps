@@ -1,0 +1,230 @@
+Docker Installation
+-------------------
+
+Launch AL2 EC2 instance
+
+-- yum install docker -y
+
+-- systemctl start docker
+
+-- systemctl status docker
+
+-- docker -v
+
+
+Commands
+--------
+
+-- docker images        [ To show list of images ]
+
+-- docker ps             [To Show list of Running Containers]
+
+-- docker ps -a    [To list all running and stopped containers]
+
+There are two ways to get images
+
+   1. Create image from Dockerfile
+
+   2. Pull the images from dockerhub
+
+
+-- docker pull amazonlinux    [ To get image amazonlinux or ubuntu from dockerhub ]
+
+-- docker pull ubuntu           [ To get image ubuntu from dockerhub ]
+
+-- docker images
+
+-- docker ps -a  [To list all running and stopped containers]
+
+
+
+A Docker image is made up of multiple layers, which are stacked on top of each other. Each layer represents a set of file changes (like adding, modifying, or deleting files) and helps in optimizing storage and reusability.
+
+
+Now, lets try creating a container using this images. Below command will directly login to contains as we are using -it
+
+-- docker run -it --name amazonlinuxcontainer amazonlinux   [ To create container , -it = interactive(go inside container), amazonlinuxcontainer is a container name , amazonlinux is image ]
+      -- ls
+      -- yum install git maven tree httpd -y
+      -- check the version
+      -- touch file{1..10}
+
+      -- ctrl p q   [ To exit from container]
+
+If you dont want to login to container and just want to create a container and run in detach mode use -d
+
+-- docker run -it -d --name ubuntucontainer ubuntu
+
+-- docker ps -a  [To list all running and stopped containers]
+
+-- docker ps    [ To list only running containers ]
+
+If you want to access the container
+
+-- docker attach ubuntucontainer
+   apt update
+   apt install nginx -y
+ 
+      -- ctrl p q
+
+If you want to run direct commands on container use exec
+
+-- docker exec -it 1275f407dc04 /bin/bash
+
+        -- apt update -y
+        -- apt install git -y
+        -- apt install apache2 -y
+        -- service apache2 start
+        -- service apache2 status
+
+        -- ctrl p q
+
+Docker attach and exec will help to access the container
+
+-- docker attach 1275f407dc04
+
+       -- ctrl p q
+
+-- docker ps -a
+
+docker attach
+-------------
+is used to attach your terminal to the standard input, output, and error streams of the main process running inside a container.
+It allows you to interact with the container's main process as if you were running it directly in your terminal.
+
+docker exec
+-----------
+
+is used to run a new command in an already running container.
+This command allows you to start additional processes inside the container independently of the main process.
+
+docker attach interacts with the container's main process (PID 1).
+docker exec starts a new, separate process inside the container.
+
+EXEC is preferred
+
+Summary
+-------
+
+docker images
+docker pull ubuntu
+docker run -it --name ubuntucontainer ubuntu
+docker pull amazonlinux
+docker run -it -d --name amazoncontainer amazonlinux
+docker exec -it 1275f407dc04 /bin/bash
+docker attach 1275f407dc04
+
+Few container commands
+----------------------
+
+docker search ubuntu        : to search images
+docker ps -a            : to list all containers
+docker ps             : to list runnings containers
+docker stop testcontainer    : to stop the container , it will be in exit state
+docker start testcontainer    : to start the container
+docker restart [container]    : To Restart Container
+docker pause testcontainer    : Pause processes in a running container. you cannot connect to this container,
+          try docker exec -it contid /bin/bash
+docker unpause cont_name        : Resume processes in a running container
+docker attach testcontainer    : to go inside the container
+docker inspect testcontainer    : to get the complete info container
+docker kill testcontainer       : to kill the container or forcibly stop the container
+docker rm testcontainer         : TO delete the container
+docker rm -f [container]        : Forcefully remove even if it is running
+docker logs [container]        : View logs for a running container:
+docker top  [container]        : Show running processes in a container:
+docker stats [container]    : View live resource usage statistics for a container:
+docker diff [container]        : Show changes to files or directories on the filesystem:
+
+docker cp [file-path] CONTAINER:[path] : Copy a local file to a directory in a container:
+         
+             docker cp hello.txt cont1:/tmp
+
+docker save IMAGE > IMAGE.tar   : Save an Image to tar file
+
+             docker save ubuntu > ubuntu.tar
+
+docker load -i IMAGE.tar    : Load an image from tar file
+
+              docker load -i ubuntu.tar
+
+docker history IMAGE        : Shows image history
+
+docker image prune        : Delete unused images
+
+docker stop containerid/containername
+
+STOP: will wait to finish all process running inside container
+KILL: wont wait to finish all process running inside container
+
+=============================================================================================================
+
+TASK: Pull ubuntu image and install apache and mysql server software's
+------------
+
+docker images
+docker pull ubuntu
+docker run -it --name ubuntucontainer ubuntu
+  -- apt update -y
+  -- apt install apache2 python3 mysql-server -y
+  -- ctrl p q
+
+Now we have container with name ubuntucontainer with apache2 and mysql server, lets create our image with this container ubuntucontainer
+This command is used to create a image what ever data we have in the container
+
+-- docker commit ubuntucontainer myimagewithapachenmysql
+
+-- docker images
+
+If you want to create a new container with this image myimagewithapachenmysql
+
+-- docker run -it -d --name mycontwithapachemysql myimagewithapachenmysql
+
+-- docker attach mycontwithapachemysql          [Access the container and check the version]
+        -- mysql --version
+
+ctrl pq --> after exit, container is still running
+ctrl d --> container will  be stopped if you use ctl d
+
+docker ps -a  [See container is in exit state]
+docker start cont-name
+docker ps -a
+
+What we did?
+
+Ubuntu image from dockerhub -> create a container -> Take image(custom image) -> From this images create containers again
+                                 install softwares     this image
+                               contains software's
+manually downloaded  --> Manually created container and installed
+
+This is not a good practise , this is manual
+
+Clean up
+---------
+
+docker ps -a
+
+Delete all containers
+----------------------
+
+docker ps -aq  [List only container-ids]
+
+docker kill $(docker ps -aq)  
+
+docker ps -a   [ All containers are in exit state ]
+
+docker rm $(docker ps -aq)
+
+docker ps -a
+
+Delete all the images
+---------------------
+
+docker images -q
+
+docker rmi -f $(docker images -q)
+
+docker images
+
+
+=============
