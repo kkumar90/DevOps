@@ -1,0 +1,212 @@
+DOCKERFILE
+----------
+
+It is used to automate image creation.
+Inside Dockerfile we use components to do our works.
+Components will be on Capital Letter.
+In Dockerfile D will be capital.
+We can create image directly without container help
+To create image from file we need to build it.
+
+COMPONENTS:
+----------
+
+FROM        : used to get base image
+RUN        : used to run linux commands (During image creation)
+CMD        : used to run linux commands (After container creation)
+ENTRYPOINT    : high priority than cmd
+COPY        : to copy local files to container
+ADD        : to copy internet files to container
+WORKDIR        : to open req directory
+LABEL        : to add labels for docker images
+ENV        : to set env variables (inside container)
+ARGS        : to pass env variables (outside containers)
+EXPOSE        : to give port number
+
+Dockerfile --> Docker Build -->  Image --> Container
+
+
+Example 1
+=========
+vi Dockerfile
+
+FROM ubuntu
+RUN apt update -y
+RUN apt install git maven tree apache2 -y
+RUN touch file1
+
+-- docker build -t reyaz:v1 .    [  . represent current directory where we have dockerfile ]
+
+-- docker run -it --name cont1 reyaz:v1   [ You will be now in container and see versions of softwares installed ]
+
+   -- ctrl pq
+
+Example 2
+===========
+RUN will execute while image creation
+CMD will exeute after container creation
+
+vi Dockerfile
+
+FROM ubuntu
+RUN apt update -y
+RUN apt install git maven tree apache2 -y
+RUN touch file1
+RUN apt install python3 -y
+CMD apt install mysql-server -y
+
+Note already first few lines are execute, it will not execute again, it will run last lines
+
+CMD will not executed, because it will execute after container creation
+
+-- docker build -t reyaz:v2 .
+
+-- docker run -it --name cont2 reyaz:v2   [dont use -d here for now to see the installation]
+
+--> now mysql-server is now installing because we used CMD command
+
+
+Example 3
+========
+COPY --> copy local files to container
+ADD --> copy internet files to container
+
+touch index.html
+
+vi Dockerfile
+
+FROM ubuntu
+COPY index.html /tmp
+ADD https://dlcdn.apache.org/tomcat/tomcat-10/v10.1.35/bin/apache-tomcat-10.1.35.tar.gz /tmp
+
+
+-- docker build -t reyaz:v3 .
+-- docker run -it --name cont3 reyaz:v3
+
+now you are in container
+cd /tmp
+ls
+
+
+Example 4
+========
+WORKDIR --> by default , when you are in container it will be in /, if you want to have a default path WORKDIR will use
+LABEL --> just like a tag , we are labeling
+
+vi Dockerfile
+
+FROM ubuntu
+COPY index.html /tmp
+ADD https://dlcdn.apache.org/tomcat/tomcat-10/v10.1.35/bin/apache-tomcat-10.1.35.tar.gz /tmp
+WORKDIR /tmp
+LABEL author Reyaz
+
+
+-- docker build -t reyaz:v4 .
+-- docker run -it --name cont4 reyaz:v4
+
+--> now see the path is /tmp
+--> to see the entire info about container
+
+-- docker inspect cont4
+-- docker inspect cont4 | grep Reyaz
+
+
+
+Example 5
+==========
+
+vi Dockerfile
+
+FROM ubuntu
+ENV course devops
+ENV trainer Reyaz
+EXPOSE 8080
+
+docker build -t reyaz:v5 .
+docker run -it --name cont5 reyaz:v5
+
+echo $course
+echo $trainer
+
+ctrl pq
+
+docker ps -a  [ Now you can see the port number for cont5 ]
+
+
+First Dockerfile Task for application Deployment
+===============================================
+
+Code - GitHub --> DockerFile --> Build Image --> Create Container --> Access application
+
+yum install git -y
+
+git clone https://github.com/ReyazShaik/website.git
+
+--> dont go inside website folder, create Dockerfile outside website
+
+vi Dockerfile
+
+FROM ubuntu
+RUN apt update
+RUN apt install apache2 -y
+RUN apt install apache2-utils -y
+RUN apt clean
+COPY website/ /var/www/html/
+RUN service apache2 restart
+EXPOSE 80
+CMD ["/usr/sbin/apachectl", "-D", "FOREGROUND"]
+
+
+-D FOREGROUND → Runs Apache in the foreground mode, meaning:
+Apache does not daemonize (does not run in the background).
+Logs are printed to the container's stdout/stderr, making it visible with docker logs.
+The process stays alive, preventing the container from exiting immediately.
+Containers stop when the main process exits. Running Apache in foreground mode ensures the container remains active.
+
+
+-- docker build -t firstproject:v1 .
+
+-- docker run -itd --name newwebcont1 -p 80:80 firstproject:v1
+
+In AWS SG , allow All traffic
+
+http://ip
+
+Note: docker rmi firstimage:v1 [if required]
+
+Another example
+----------------
+Tomcat installation on Container
+-------------------------------
+
+vi Dockerfile
+
+# Use the official Tomcat image as the base
+FROM tomcat:latest
+
+# Set environment variables (optional)
+ENV CATALINA_HOME /usr/local/tomcat
+ENV PATH $CATALINA_HOME/bin:$PATH
+
+# Remove default webapps (optional: keeps Tomcat clean)
+RUN rm -rf $CATALINA_HOME/webapps/*
+
+# Copy your application WAR file into the Tomcat webapps directory
+COPY jenkins.war $CATALINA_HOME/webapps/jenkins.war
+
+# Expose Tomcat's default HTTP port
+EXPOSE 8080
+
+# Start Tomcat
+CMD ["catalina.sh", "run"]
+
+
+-- docker build -t tomcatimage:v1 .
+
+-- docker run -itd --name tomcont -p 8080:8080 tomcatimage:v1
+                                     host:container
+
+docker exec -it 1275f407dc04 /bin/bash
+
+http://ip:8080
