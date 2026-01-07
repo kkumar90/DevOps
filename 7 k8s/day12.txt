@@ -1,0 +1,577 @@
+PODS SCHEDULING
+===============
+
+In Kubernetes, Node Selector,Node Affinity,  Taints and Tolerations and are mechanisms that influence how Pods are scheduled onto Nodes within a cluster.
+
+Node Selector
+Node Affinity
+Taints and Tolerations
+
+1. Node Selector
+------------------
+NodeSelector is the simplest form of node selection constraint, allowing Pods to be scheduled only on Nodes with specific labels. By specifying a NodeSelector in a Pod's specification, you can ensure that the Pod runs only on Nodes that match the given label criteria.
+NodeSelector: Use when you have simple, specific constraints for Pod placement based on Node labels
+
+In the below manifest file, we are creating 2 pods and those pods should be scheduled in ib-node labeled node.
+
+vi nodeselector.yml
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ib-deployment
+  labels:
+    app: bank
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: bank
+  template:
+    metadata:
+      labels:
+        app: bank
+    spec:
+      nodeSelector:    
+        node-name: ib-node
+      containers:
+      - name: cont1
+        image: reyadocker/internetbankingrepo:latest
+
+
+-- kubectl apply -f nodeselector.yml
+
+-- kubectl get pods   --- Pods are not getting created because there is no label to the node called node-name: ib-node
+
+-- kubectl describe pod ib-deployment-7784c9bfb5-8sl8d  
+
+     Warning  FailedScheduling  2m40s  default-scheduler  0/3 nodes are available: 1 node(s) had untolerated taint {node-role.kubernetes.io/control-plane: }, 2 node(s) didn't match Pod's node affinity/selector. preemption: 0/3 nodes are available: 3 Preemption is not helpful for scheduling.
+
+-- kubectl get nodes
+
+-- kubectl edit node i-043783332483bf9f8
+
+      under labels add  --- node-name: ib-node / We can use command also "kubectl label nodes i-043783332483bf9f8 node-name=ib-node "
+
+
+-- kubectl get pods  -- Now pods are running
+
+we are forcing kube-schedular to schedule pod on particular node. Its hard match. If it doesn't match, Kube scheduler will not schedule the pod
+so pod will be in pending state    
+
+-- kubectl delete deploy ib-deployment
+
+2: Node Affinity
+================
+Node Affinity is a more expressive way to specify rules about the placement of pods relative to nodes' labels. It allows you to specify rules that apply only if certain conditions are met. Same as Node Selector but this has flexible way, if matches do it, if not schedule pod on any another node.
+
+Two types
+----------
+1.Preferred during scheduling Ignore during execution (soft rules) : good if happen
+2.Required during scheduling Ignore during execution (hard rules) : Must happen  : Same as NodeSelector
+
+The node affinity syntax supports the following operators: In, NotIn, Exists, DoesNotExist, Gt, Lt, etc.
+
+
+Preferred:
+---------
+
+vi preferred.yml
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ib-deployment
+  labels:
+    app: bank
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: bank
+  template:
+    metadata:
+      labels:
+        app: bank
+    spec:
+      affinity:
+       nodeAffinity:
+        preferredDuringSchedulingIgnoredDuringExecution:
+        - weight: 1
+          preference:
+           matchExpressions:
+           - key: node-name
+             operator: In
+             values:
+             - mb-node
+      containers:
+      - name: nginx
+        image: nginx:1.14.2
+        ports:
+        - containerPort: 80
+
+
+weight: 1: Indicates the preference weight. Higher values signify stronger preferences.​
+
+
+
+we haven't set the label for another node as node-name: mb-node
+
+-- kubectl apply -f preferred.yml
+
+-- kubectl get pods  --> 1 pod running. Why ? even i mention node-name: mb-node, No node has this label yet, but as we used preferred configuration, scheduler has scheduled on other nodes.
+
+-- kubectl get pods -o wide   --> note down node-id , it might show on same node, but scheduler has choosen
+
+-- kubectl delete deploy ib-deployment
+
+-- vi preffered.yml
+
+   change node-name: ib-node
+
+-- kubectl apply -f preferred.yml
+
+-- kubectl get pods -o wide  --- it should schedule on actual labeled node
+
+-- kubectl delete -f preferred.yml
+
+Required
+========
+
+vi required.yml
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ib-deployment
+  labels:
+    app: bank
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: bank
+  template:
+    metadata:
+      labels:
+        app: bank
+    spec:
+      affinity:
+       nodeAffinity:
+        requiredDuringSchedulingIgnoredDuringExecution:
+         nodeSelectorTerms:
+         - matchExpressions:
+           - key: node-name
+             operator: In
+             values:
+             - mb-node
+      containers:
+      - name: nginx
+        image: nginx:1.14.2
+        ports:
+        - containerPort: 80
+
+-- kubectl create -f required.yml
+
+-- kubectl get pods -o wide   [Pod are not running, it is in pending state because, required is mb-node, but no node has mb-node]
+
+-- kubectl delete -f required.yml
+
+TAINTS and TOLERANCE  : Example like Lock (taints) and Key (tolerance)
+====================
+
+Taints are like locks on the doors of your house, restricting access to certain pods (visitors).
+Tolerations are like keys that pods (visitors) can carry to bypass the locks (taints) and be scheduled on nodes.
+
+
+In Kubernetes, taints and tolerations work together to control the scheduling of Pods onto Nodes. Taints are applied to Nodes to prevent certain Pods from being scheduled on them, while tolerations are applied to Pods to allow them to be scheduled on Nodes with matching taints. ​
+
+Example Scenario: Dedicated Nodes for Specific Workloads
+---------------------------------------------------------
+Suppose you have a Kubernetes cluster with Nodes equipped with specialized hardware, such as GPUs, intended exclusively for machine learning workloads. To ensure that only Pods requiring GPU resources are scheduled on these Nodes, you can use taints and tolerations.
+
+
+-- kubectl edit node i-0e6b67bf1b00383be  [Edit control plane, this master node has taint no schedule, thats the reason master node will not have pods ]
+
+Apply a Taint to GPU Nodes
+--------------------------
+
+First, taint the GPU Nodes to repel/force Pods that do not require GPU resources:
+
+-- kubectl get nodes
+
+-- kubectl taint nodes i-0333b24c25bf4868b hardware=gpu:NoSchedule
+
+This command adds a taint with key hardware, value gpu, and effect NoSchedule to the specified Node. As a result, Pods without a matching toleration will not be scheduled on this Node.
+
+3 Effects
+--------
+NoSchedule: Pods will not be scheduled onto the tainted node unless they have a matching toleration.
+PreferNoSchedule: Scheduler tries to avoid scheduling pods onto the tainted node but can do so if necessary.
+NoExecute: Existing pods on the node without matching tolerations are evicted.
+
+Note: Taints and Tolerance will not gurantee to have pod on the same node
+
+Lets test:
+-------
+
+vi deploy.yml
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ib-deployment
+  labels:
+    app: bank
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: bank
+  template:
+    metadata:
+      labels:
+        app: bank
+    spec:
+      containers:
+        - name: cont1
+          image: reyadocker/internetbankingrepo:latest
+
+
+-- kubectl create -f deploy.yml
+
+-- kubectl get pods -o wide  [all pods are scheudled on another node]
+
+Add a Toleration to GPU-Requiring Pods
+--------------------------------------
+
+Next, add a toleration to the Pods that require GPU resources, allowing them to be scheduled on the tainted Nodes:
+
+vi deploy.yml
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ib-deployment
+  labels:
+    app: bank
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: bank
+  template:
+    metadata:
+      labels:
+        app: bank
+    spec:
+      containers:
+        - name: cont1
+          image: reyadocker/internetbankingrepo:latest
+      tolerations:
+        - key: "hardware"
+          operator: "Equal"
+          value: "gpu"
+          effect: "NoSchedule"
+
+
+In this Pod specification, the toleration matches the taint applied to the GPU Nodes, permitting the Pod to be scheduled on those Nodes.
+
+
+Key Points:
+----------
+Taints are applied to Nodes to repel certain Pods. They consist of a key, value, and effect (NoSchedule, PreferNoSchedule, or NoExecute). ​
+
+Tolerations are applied to Pods to allow them to be scheduled on Nodes with matching taints. They must match the key, value, and effect of the taint to be effective.
+
+
+Pod Affinity
+=============
+Pod affinity allows users to specify which pods a pod should or should not be scheduled with based on labels. For example, you can use pod affinity to specify that a pod should be scheduled on the same node as other pods with a specific label, such as app=database.
+
+SUMMARY
+=======
+
+Taint should be used when you want to mark a node as unavailable for certain pods. For example, you can use taint to mark a node as "maintenance" and prevent pods from being scheduled on the node while it is undergoing maintenance.
+
+Node selector is a simpler and more primitive mechanism compared to node affinity and is sufficient for many use cases.
+
+Node affinity should be used when you want to specify which nodes a pod should or should not be scheduled on based on node labels. Node affinity provides more fine-grained control over pod scheduling compared to node selector and allows you to specify complex rules for pod scheduling based on multiple node labels.
+
+Pod affinity allows us to set priorities for which nodes to place our pods based off the attributes of other pods running on those nodes. This works well for grouping pods together in the same node.
+
+Pod anti-affinity allows us to accomplish the opposite, ensuring certain pods don’t run on the same node as other pods. We are going to use this to make sure our pods that run the same application are spread among multiple nodes. To do this, we will tell the scheduler to not place a pod with a particular label onto a node that contains a pod with the same label
+
+
+https://blog.devops.dev/taints-and-tollerations-vs-node-affinity-42ec5305e11a
+
+============================
+Blue Green Deployment Project
+============================
+
+same deployment code, but here we are adding a new label called version : blue
+
+vi blue.yml
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: my-app-blue
+  labels:
+    app: my-app
+    version: blue
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: my-app
+      version: blue
+  template:
+    metadata:
+      labels:
+        app: my-app
+        version: blue
+    spec:
+      containers:
+      - name: my-app
+        image: trainerreyaz/ib-image:latest
+        ports:
+        - containerPort: 80
+
+kubectl create -f blue.yml
+
+-----------------------
+
+vi blue-service.yml
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: my-app-service
+spec:
+  selector:
+    app: my-app
+    version: blue
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 80
+  type: LoadBalancer
+
+
+kubectl create -f blue-service.yml
+
+kubectl get service  [Wait for 2 mins. it shows ELB internet banking. Access it via browser.]
+
+---------------------------
+
+Now keep v2 deployment ready. Here label , version: green
+
+
+vi green.yml
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: my-app-green
+  labels:
+    app: my-app
+    version: green
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: my-app
+      version: green
+  template:
+    metadata:
+      labels:
+        app: my-app
+        version: green
+    spec:
+      containers:
+      - name: my-app
+        image: trainerreyaz/mb-image:latest
+        ports:
+        - containerPort: 80
+
+
+kubectl create -f green.yml  [Keep the v2 application ready]
+
+
+Now Switch. Edit blue-service.yml  and change blue to green. Traffic will redirect from blue pods to green
+
+vi blue-service.yml
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: my-app-service
+spec:
+  selector:
+    app: my-app
+    version: green
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 80
+  type: LoadBalancer
+
+
+kubectl apply -f blue-service.yml
+
+Refresh ELB, we get mobile banking
+
+
+Cannary Deployment Project
+--------------------------
+
+Example of a real-world Kubernetes Canary Deployment using an NGINX web app. This shows how to gradually shift traffic from v1 (stable) to v2 (canary) — perfect for production-style rollouts.
+
+🎯 Goal
+--------
+Deploy a new version of an app (v2) side-by-side with the old version (v1), and split traffic using a Kubernetes Service.
+
+Create a separate namespace if required
+---------------------------------------
+
+-- kubectl create namespace canary-demo
+
+-- kubectl config set-context --current --namespace=canary-demo
+
+-- kubectl get pods  [no pods]
+
+🔹 Step 1: Deploy Nginx or app v1  -- if required replace nginx:1.19 to some real image ib-rs or wordpres or nextwave
+----------------------------
+
+vi nginx-v1.yml
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nginx-v1
+  labels:
+    app: nginx
+    version: v1
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: nginx
+      version: v1
+  template:
+    metadata:
+      labels:
+        app: nginx
+        version: v1
+    spec:
+      containers:
+      - name: nginx
+        image: nginx:1.19
+        ports:
+        - containerPort: 80
+
+
+-- kubectl apply -f nginx-v1.yml
+
+🔹 Step 2: Deploy Nginx or app v2
+-----------------------------------
+vi nginx-v2.yml
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nginx-v2
+  labels:
+    app: nginx
+    version: v2
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: nginx
+      version: v2
+  template:
+    metadata:
+      labels:
+        app: nginx
+        version: v2
+    spec:
+      containers:
+      - name: nginx
+        image: nginx:1.21
+        ports:
+        - containerPort: 80
+
+
+-- kubectl apply -f nginx-v2.yml
+
+🔹 Step 3: Create Nginx Service with ELB
+----------------------------
+vi nginx-service.yml
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: nginx-service
+  annotations:
+    service.beta.kubernetes.io/aws-load-balancer-type: "classic"
+spec:
+  type: LoadBalancer
+  selector:
+    app: nginx
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 80
+
+
+-- kubectl apply -f nginx-service.yml
+
+
+📌 What Are Kubernetes Annotations?
+In Kubernetes, annotations are key-value pairs used to attach non-identifying metadata to objects (like Pods, Services, Deployments, etc.). Unlike labels, which are used for selection (e.g. for scheduling or selectors), annotations are meant for storing additional information that tools, controllers, or humans can use.
+
+🧠 Difference Between Labels and Annotations
+----------------------------------------------
+| Feature     | **Labels**                         | **Annotations**                                    |
+| ----------- | ---------------------------------- | -------------------------------------------------- |
+| Purpose     | Identifying, grouping, selecting   | Attaching extra metadata                           |
+| Used by     | Kubernetes core system (selectors) | Tools, controllers, scripts                        |
+| Max size    | Small (\~63 chars per key/value)   | Can be large (up to 256 KB total)                  |
+| Example use | `app=nginx`, `tier=backend`        | `kubectl.kubernetes.io/last-applied-configuration` |
+
+
+Get ELB URL
+-------------
+
+-- kubectl get svc nginx-service
+
+http:/elbdns
+
+Repeat a few times — you'll randomly hit either:
+
+NGINX v1 (from nginx-v1 pods)
+
+NGINX v2 (from nginx-v2 pod)
+
+📈 Canary Rollout Strategy
+--------------------------
+
+You can simulate progressive rollout by:
+
+Increasing v2 replicas:
+-----------------------
+
+kubectl scale deployment nginx-v2 --replicas=2
+
+
+Reducing v1 replicas:
+---------------------
+kubectl scale deployment nginx-v1 --replicas=1
+
+This gradually shifts more traffic to v2.
+
+kubectl scale deployment nginx-v1 --replicas=0
+
+kubectl get pods [now has only v2 pods]

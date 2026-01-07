@@ -1,0 +1,305 @@
+Setup KOPS cluster , user github script
+
+Note: just try to delete now worker node or master node, ASG will create it immediately
+
+-- kops get cluster
+
+-- kubectl get nodes/no
+
+-- kubectl get nodes -o wide
+
+
+
+vi deployment.yml
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ib-deployment
+  labels:
+    app: bank
+spec:
+  replicas: 4
+  selector:
+    matchLabels:
+      app: bank
+  template:
+    metadata:
+      labels:
+        app: bank
+    spec:
+      containers:
+      - name: cont1
+        image: trainerreyaz/ib-image:latest
+
+-- kubectl create -f deployment.yml
+
+-- kubectl get pods
+
+-- kubectl get nodes -o wide
+
+Manager node will not host pods himself, K8S will create pods only in worker nodes
+
+-- kubectl get pods -o wide   [see the nodes, pods spread across nodes equally]
+
+Example: if you want 5 pods , edit yml file and update replicas to 5
+
+-- kubectl apply -f deployment.yml
+
+-- kubectl get no -o wide
+
+===========================
+Few Cluster Admin Activities
+==========================
+
+Currently we have now only 1 master nodes and 2 worker nodes
+
+KOPS commands are used for cluster activities.
+KUBECTL commands are used for resource activities.
+
+annotations
+----------
+ig =  instance group
+
+WorkerNodes = nodes-ap-south-1a
+
+Scale Out Worker Nodes
+----------------------
+
+-- 
+
+kops edit ig --name=reyaz.k8s.local nodes-ap-south-1a
+           --> max size = 4, min size = 4
+
+-- kops update cluster --name reyaz.k8s.local --yes --admin
+
+-- kops rolling-update cluster --yes
+
+See in AWS Console , 2 additional worker nodes got created
+
+-- kubectl get nodes   [takes time to show]
+
+Scale out Master Nodes
+----------------------
+
+-- 
+
+kops edit ig --name=reyaz.k8s.local control-plane-ap-south-1a
+           --> max size = 2, min size = 2
+
+-- kops update cluster --name reyaz.k8s.local --yes --admin
+
+-- kops rolling-update cluster --yes
+
+See in AWS Console , 1 additional Master nodes got created
+
+-- kubectl get nodes  [takes time to show]
+
+*************************************************************************
+IF ERROR
+=======
+🔹 Step 3: If Kubelet is Installed but Not Found in Systemd
+If kubelet is installed but still not found in systemd, try reloading systemd:
+
+sudo systemctl daemon-reload
+sudo systemctl restart kubelet
+
+If the issue persists, manually add the systemd service file:
+
+sudo nano /etc/systemd/system/kubelet.service
+
+[Service]
+ExecStart=/usr/bin/kubelet
+Restart=always
+StartLimitInterval=0
+RestartSec=10
+[Install]
+WantedBy=multi-user.target
+Then reload and start:
+
+sudo systemctl daemon-reload
+sudo systemctl enable kubelet
+sudo systemctl restart kubelet
+
+🔹 Step 4: Check Logs for Errors
+If kubelet is still failing, check logs:
+
+sudo journalctl -u kubelet -f
+
+
+*******************************************************
+
+
+
+
+
+
+
+
+
+Example: Lets do a new deployment again
+--------------------------------------
+
+Before that clean up
+
+-- kubectl get deployments
+
+-- kubectl delete deploy ib-deployment
+
+-- kubectl get pods
+
+vi deploynew.yml
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mb-deployment
+  labels:
+    app: bank
+spec:
+  replicas: 4
+  selector:
+    matchLabels:
+      app: bank
+  template:
+    metadata:
+      labels:
+        app: bank
+    spec:
+      containers:
+      - name: cont1
+        image: trainerreyaz/mb-image:latest
+
+-- kubectl create -f deploynew.yml
+
+-- kubectl get po -o wide   [Now all pods are spread across 4 worker nodes]
+
+If you want to scale out pods
+-------------------------
+
+-- kubectl scale deploy/mb-deployment --replicas=10
+
+-- kubectl get pods -o wide
+
+If you want to scale in pods
+-------------------------
+
+-- kubectl scale deploy/mb-deployment --replicas=4
+
+-- kubectl get pods -o wide
+
+
+-----
+
+
+===============
+NAMESPACES
+===============
+
+Generally we cannot create multiple Cluster for each team(expensive), instead we create a NameSpaces in one Cluster for each team
+
+Namespaces will not talk to each other, its an isolated space in one Cluster
+
+Each namespaces can see their own pods
+
+TYPES:
+=======
+default            : This is default namespace, all objects are created here
+kube-node-release    : It will store the object which is taken from one namespace to another
+kube-public        : All Public objects are stored here, generally namespace are private, if you want common public namespace
+kube-system        : By default K8S will create some object, those are stored here
+
+
+Note: Every component of kubernetes cluster is going to create in the form of POD, All these PODS are stored in Kube-System Namespace
+
+-- kubectl get namespace/ns
+
+-- kubectl get pods
+
+-- kubectl describe pod   [ By default pods are created in default namespace]
+
+
+-- kubectl get pods -A  [This will list all pods from all namespaces]
+
+-- kubectl get pods --all-namespaces  [This can also be used to get all pods from all namespaces]
+
+-- kubectl get pods -n default [This will list pods wchich is in default namespace]
+
+-- kubectl get pods -n kube-node-release  -- no pods here
+
+-- kubectl get pods -n kube-public  -- no pods here
+
+-- kubectl get pods -n kube-system  [all kubeproxy, apiserver, controller, schedular pods are here]
+
+
+Lets create a pods in namespaces
+--------------------------------
+
+-- kubectl get ns
+
+-- kubectl create ns dev
+
+-- kubectl get ns
+
+Currently I am in default namespace, how to check
+
+-- kubectl config view   [ output doesn't show namespace,  if you don't see any namespace, this is default]
+
+-- kubectl config set-context --current --namespace=dev  [This is use to switch to move from another namespace]
+
+-- kubectl config view  [ Now this output show dev namespace ]
+
+-- kubectl get pods  [Now you are in dev namespace, now you cannot see any pods of other namespace]
+
+== create a new pods in this namespace
+
+-- kubectl run dev1 --image nginx
+-- kubectl run dev2 --image nginx
+-- kubectl run dev3 --image nginx
+
+-- kubectl get pods
+
+=== lets create few pods in PROD namespace
+------------------------------------------
+
+kubectl get ns
+
+kubectl create ns prod
+
+kubectl get ns
+
+kubectl config view  -- see the output, we are in dev
+
+kubectl config set-context --current --namespace=prod   --- now change the namespace to prod
+
+kubectl config view
+
+kubectl get po
+
+you are in prod namespace , but if you want to see from another namespace
+
+kubectl run prod1 --image nginx
+kubectl run prod2 --image nginx
+kubectl run prod3 --image nginx
+
+kubectl get po
+
+kubectl get po -n default
+kubectl get po -n dev
+kubectl get po -n prod
+
+kubectl delete pod dev1 -n dev   [Deleting the  pod dev2 in dev namespace]
+
+kubectl delete pod prod1 -n prod   [Deleting the  pod prod1 in prod namespace]
+
+kubectl delete pod --all : [To delete all pods in the namespace]
+
+If require: kubectl delete namespace <namespace-name>
+
+In this case, anyone can access/delete/create pods in any namespace. Which is not good. for this we need restrict users to access namespaces using RBAC.
+
+
+
+kops delete cluster --name reyaz.k8s.local --yes
+
+============================================================================================================================================

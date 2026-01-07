@@ -1,0 +1,491 @@
+===========================
+Resource Quota
+===========================
+
+
+K8S cluster can be divided into namespaces
+By default the pods in K8s will run with no limitation of Memory and CPU
+WE need to give the limit for the pod
+IT can limit the objects that can be created in a namespace and total amount of resources
+pod schedular in master will check the worker nodes on cpu and memory and create a pod in it
+we can set limits to CPU, Memory and storage
+CPU is measrured on Cores and memory on Bytes
+1CPU = 1000 milliCPUs
+
+Requests = how much we want
+Limit = how much max we want
+
+limits can be given to pod and nodes also
+the default limit is 0
+
+if you mention request and limit everthing will work fine
+if you dont mention request and mention limit then Request = limit
+if you dont mention request dont mention limit , Request ! = limit
+
+Every pod in the namespace must have CPU limit, no need to mention memory, if you dont mention cpu, pod will take all cpu
+The amount of CPU used by all pods inside namespace must not exceed specified limit
+
+-- kubectl create ns dev
+
+-- kubectl config set-context --current --namespace=dev
+
+-- kubectl config view  [To see which namespace we are using]
+
+vi dev-quota.yml
+
+
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: dev-quota
+  namespace: dev
+spec:
+  hard:
+    pods: "5"
+    limits.cpu: "1"
+    limits.memory: 1Gi
+
+
+Pods: A maximum of 5 pods can be created in dev namespace.​
+CPU Limits: The total CPU limit across all containers is restricted to 1 CPU.​
+Memory Limits: The total memory limit across all containers is capped at 1 GiB.
+
+
+-- kubectl create -f dev-quota.yml
+
+-- kubectl get quota
+
+NAME        AGE   REQUEST     LIMIT
+dev-quota   69s   pods: 0/5   limits.cpu: 0/1, limits.memory: 0/1Gi
+
+
+-- kubectl run pod1 --image=nginx  [ This will not work because, we need to mention quota for dev namespace as we are in that ns
+                                     we can put --cpu and --memory in the command or use manifest file ]
+
+vi deploy.yml
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ib-deployment
+  labels:
+    app: bank
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: bank
+  template:
+    metadata:
+      labels:
+        app: bank
+    spec:
+      containers:
+        - name: cont1
+          image: reyadocker/internetbankingrepo:latest
+          resources:
+            limits:
+              cpu: "1"
+              memory: 512Mi
+
+-- kubectl create -f deploy.yml
+
+-- kubectl get pods  [It has created only 1 pod, as we mention replica = 3 , this is due to restriction we made for this namespace dev]
+
+In the above manifest file, we are mentioning cpu 1 and memory 512 for each pod, but in name space dev we have restricted to 1cpu and 1GB memory, if you run kubectl create -f deploy.yml , it will create only 1 pod because of restriction, if you want all 3 pods put cpu as 0.3 ad 300Mi, it will create all- to do this kubectl delete -f deploy.yml and recreate it
+
+-- kubectl delete -f deploy.yml
+
+
+vi deploy.yml
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ib-deployment
+  labels:
+    app: bank
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: bank
+  template:
+    metadata:
+      labels:
+        app: bank
+    spec:
+      containers:
+        - name: cont1
+          image: reyadocker/internetbankingrepo:latest
+          resources:
+            limits:
+              cpu: "0.3"
+              memory: 300Mi
+
+
+-- kubectl create -f deploy.yml
+
+-- kubectl get po
+
+-- kubectl get quota
+
+-- kubectl delete -f deploy.yml
+
+========================================================================================================================
+
+======================
+PV - Persistent Volume
+======================
+
+Stateless : if i delete pod data is lost, because data is stored locally on the pod and instance
+----------
+Stateful: if i delete the pod data is persistent, because we can store the data in external storage like AWS EBS
+---------
+
+Kubernetes Persistent Volumes (PVs) provide a way to manage durable storage for applications running in a Kubernetes cluster.
+----------------------------------
+Unlike ephemeral storage tied to the lifecycle of a pod, Persistent Volumes exist independently of pods and remain intact even after pods are deleted.
+
+This makes PVs ideal for stateful applications that require persistent storage, such as databases
+
+
+Persistent meaning permanent
+
+PV are independent they can exists even if no pod is using them
+
+It is created by administrator or dynamically created by storage class
+
+Once a PV is created , it can be bound to a Persistent Volume Claim (PVC), which is a request for storage by a pod
+
+When a pod requests storage via PVC , K8S will search for a suitable PV to satisfy the requests
+
+PV is bound to the PVC and the pod can use the storage
+
+If no suitable PV is found, K8S will either dynamically create a new one (if the storage class support dynamic provisioning ) or the PVC will remain unbound
+
+PV will maintain total storage , PV Is bound to PVC
+Pods will ask PVC, PVC will get from PV
+
+
+PVC
+===
+
+TO use PV we need to claim the volume using PVC
+PVC request a PV with your desired specification(size, access, modes & speed etc) from K8S and once a suitable PV is found it will bound to PVC
+
+After bounding is done to pod you can mount is as a volume
+
+Once user finished work, the attached PV can be released the underlying PV can be reclaimed and recycled for future
+
+if you create volume in cluster , if cluster is delete , storage is also deleted. SO use AWS EBS Volumes
+
+
+First, create a EBS volume in EC2, with 20GB magnetic
+
+
+
+| Component | Purpose                          |
+| --------- | -------------------------------- |
+| **PV**    | Admin-provisioned storage        |
+| **PVC**   | User request for storage (claim) |
+| **Pod**   | Uses the PVC to mount the PV     |
+
+
+
+-- kubectl delete ns dev   [delete the namespace and come to default]
+-- kubectl config set-context --current --namespace=default
+
+vi pv.yml
+
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: my-pv
+spec:
+  capacity:
+    storage: 20Gi
+  accessModes:
+    - ReadWriteOnce
+  awsElasticBlockStore:
+    volumeID: vol-0771f0561f66408c9
+    fsType: ext4
+
+-- kubectl create -f pv.yml
+
+-- kubectl get pv
+
+
+----------------------------------------------------------------
+
+--- Now create pvc
+
+vi pvc.yml
+
+
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: my-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 20Gi
+
+
+-- kubectl create -f pvc.yml
+
+-- kubectl get pv   [ This will show pv and pvc both ]
+
+Note: kubectl get pvc is showing in pending state, because we need to create a new pods to consume first. kubectl get events -- see logs
+
+--Now lets setup a statefull application, statefull meaning, it will keep the previous data
+
+What is a Kubernetes StatefulSet?
+--------------------------------
+A StatefulSet is a Kubernetes workload API object used to manage stateful applications. Unlike Deployments or ReplicaSets, which manage stateless pods, StatefulSets are designed for apps that require stable identities, persistent storage, and ordered deployment.
+
+
+vi deploy.yml
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pvdeploy
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+     app: bank
+  template:
+    metadata:
+      labels:
+        app: bank
+    spec:
+      containers:
+      - name: cont1
+        image: nginx
+        command: ["/bin/bash", "-c", "sleep 10000"]
+        volumeMounts:
+        - name: my-pvc
+          mountPath: "/tmp/persistent"
+      volumes:
+        - name: my-pvc
+          persistentVolumeClaim:
+            claimName: my-pvc
+
+
+-- kubectl create -f deploy.yml
+
+-- kubectl get pods
+
+Now lets go inside container to see the volume mount
+
+-- kubectl exec -it podid-dfgdkjjf -- /bin/bash
+
+-- cd /tmp
+
+-- ls
+
+-- cd persistent
+
+-- touch file{1..5}
+vi file1
+this is from pod-1 pv
+
+exit
+
+-- kubectl get pods
+
+lets delete the pod now, if we delete the pod, a new pod will be created automatically , data will not get deleted as it is in the persistent volume
+
+-- kubectl delete pods podid-rfgdfdjg
+l
+-- kubectl get pods   [ you have a new pod ]
+
+--kubectl exec -it podid-dfdgh435 -- /bin/bash
+
+or
+
+-- kubectl exec -it podid-dfdgh435-- ls /tmp/persistent
+
+cd /tmp/persistent
+ls
+we can see the same data
+
+exit
+
+This is stateful
+
+=======================================================
+
+If you want to increase the size, increase EBS volume to 25GB
+
+kubectl describe pv  [ Capacity is shows 20gb only ]
+
+vi pv.yml
+in storage change to 25Gi
+
+kubectl apply -f pv.yml
+
+kubectl describe pv
+
+kubectl delete -f .   [Delete all deployments]
+
+================================================================================================================
+Dynamic Provisioning
+---------------------
+
+📦 What is StorageClass?
+------------------------
+A StorageClass is a way to dynamically provision PersistentVolumes (PVs) in Kubernetes without manually creating them ahead of time.
+
+When you create a PersistentVolumeClaim (PVC) that refers to a StorageClass, Kubernetes:
+
+Automatically creates an EBS (or other backend) volume
+
+Binds that volume to your PVC
+
+Mounts it to your Pod
+
+To use EBS-backed dynamic PersistentVolumeClaim (PVC) in a KOPS-managed Kubernetes cluster on AWS, follow this practical example using the built-in gp2 or gp3 StorageClass provided by AWS and KOPS
+
+Note: If you directly create pvc without pv ... KOPS will create pv automatically. pv meaning , kops will create a EBS volume automatically.
+
+Note:  dynamic provisioning is enabled by default in KOPS
+
+🔹 1. Verify StorageClass
+--------------------------
+-- kubectl get storageclass
+
+
+🔹 2. Create a PVC  -- no need to create pv. pv(ebs volume) will create automatically
+---------------------
+
+vi ebs-pvc.yml:
+
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: ebs-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+  storageClassName: gp2  # or gp3 if available
+
+
+-- kubectl apply -f ebs-pvc.yml
+
+🔹 3. Pod Using the PVC
+-----------------------
+
+vi ebs-pod.yml
+
+apiVersion: v1
+kind: Pod
+metadata:
+  name: ebs-nginx
+spec:
+  containers:
+    - name: web
+      image: nginx
+      volumeMounts:
+        - mountPath: /usr/share/nginx/html
+          name: ebs-volume
+  volumes:
+    - name: ebs-volume
+      persistentVolumeClaim:
+        claimName: ebs-pvc
+
+
+kubectl apply -f ebs-pod.yml
+
+kubectl get pvc
+
+kubectl get pv
+
+kubectl get pod ebs-nginx
+
+You should see that the PVC is Bound, and a PV is dynamically created.
+
+You can also check EBS volumes in AWS Console → EC2 → Volumes — it will show as "in-use".
+
+
+Delete PVC (PersistentVolumeClaim)
+---------------------------------
+kubectl get pv
+
+kubectl get pvc
+
+kubectl delete pvc my-pvc -n default
+
+Delete PV (PersistentVolume)
+---------------------------
+kubectl delete pv my-pv
+
+
+
+📘 Example: StatefulSet for NGINX with Persistent Storage
+-----------------------------------------------------------
+
+
+
+StatefulSet YAML
+
+vi nginxstateful.yml
+
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: web
+spec:
+  serviceName: "nginx"
+  replicas: 3
+  selector:
+    matchLabels:
+      app: nginx
+  template:
+    metadata:
+      labels:
+        app: nginx
+    spec:
+      containers:
+      - name: nginx
+        image: nginx
+        ports:
+        - containerPort: 80
+          name: web
+        volumeMounts:
+        - name: www
+          mountPath: /usr/share/nginx/html
+  volumeClaimTemplates:
+  - metadata:
+      name: www
+    spec:
+      accessModes: [ "ReadWriteOnce" ]
+      resources:
+        requests:
+          storage: 1Gi
+
+RWO = ReadWriteOnce
+ROX  ReadOnly Many
+RWX ReadWriteMany
+
+kubectl create -f nginxstateful.yml  [It creates 1GB volume pv is AWS EBS and automatically mount pvc to pods ]
+
+kubectl get pv
+
+kubectl get pvc
+
+kubectl get pods
+
+Delete pvc
+
+kubectl get pvc
+
+kubectl delete pvc www-web-0 www-web-1 www-web-2

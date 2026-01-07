@@ -1,0 +1,468 @@
+ENV VARIABLES:
+---------------
+It is a way to pass configuration information to containers running within pods. To set Env vars it include the env or envFrom field in the configuration file.
+
+ENV: Allows you to set environment variables for a container, specifying a value directly for each variable through CLI/ Command prompt
+----
+ENVFROM: PASSING Variables FROM FILE - 2 Types, configmaps and secrets
+------
+
+CONFIGMAPS & SECRETS:
+--------------------
+
+ConfigMaps
+-------------
+It is used to store the data in key-value pair, files, or command-line arguments that can be used by pods, containers in cluster.
+But the data should be non-confidential. It does not provide security and encryption
+If you want to provide Enryption use Secrets in K8S.
+
+Limit of the configmap is only 1MB
+
+But if you want to store more than 1MB configmap data mount volume or use a separate database or a file service
+
+Example with ENV
+----------------
+
+-- kubectl create deploy newdb --image=mariadb    [ This will create a deployment called newdb with single pod having mariadb]
+
+-- kubectl get pods
+
+-- kubectl logs newdb-794dd57dbc-tr7s9   [It is crashed because we haven't specified the passsowrd for MariaDB]
+
+-- kubectl set env deploy newdb MYSQL_ROOT_PASSWORD=root123456
+
+-- kubectl get pods  [ Now it will be in running state, but we are passing password directly from command ]
+
+-- kubectl delete deploy newdb
+
+
+Passing from Var file
+--------------------
+
+-- kubectl create deploy newdb --image=mariadb
+
+-- kubectl get pods
+
+-- kubectl logs newdb-794dd57dbc-f44f2
+
+This will not work because haven't specified the password, in above example we have passed password using ENV but lets use now ENVFROM
+
+--> create a file called vars
+
+vi vars
+
+MYSQL_ROOT_PASSWORD=root123456
+MYSQL_USER=admin
+
+lets use configmap and create configmap called dbvars
+
+-- kubectl create cm dbvars --from-env-file=vars  [It will create a configmap called dbvars using var file we created]
+
+-- kubectl get cm
+
+-- kubectl describe cm dbvars
+
+This will show the plain data
+
+
+Now we just created a configmap called dbvars, using this lets deploy our pods
+
+-- kubectl get cm
+
+-- kubectl set env deploy newdb --from=configmaps/dbvars
+
+-- kubectl get pods
+
+we can give configmaps also in manifest file
+
+-- kubectl get cm
+
+-- kubectl delete deploy newdb
+
+SECRETS:
+--------
+
+SECRETS: To store sensitive data in an unencrypted format like passwords, ssh-keys etc it uses base64 encoded format
+password=reyaz (now we can encode and decode the value)
+
+WHY: if i dont want to expose the sensitive info so we use SECRETS
+
+By default k8s will create some Secrets these are useful from me to create communicate inside the cluster used to communicate with one resource to another in cluster
+
+These are system created secrets, we need not to delete
+TYPES:
+Generic: creates secrets from files, dir, literal (direct values)
+TLS: Keys and certs
+Docker Registry: used to get private images by using the password
+
+
+
+-- kubectl create deploy newdb --image=mariadb
+
+-- kubectl get pods  [This will fail because no env variable]
+
+first create secrets , 2 ways to create, from CLI or from File
+
+-- kubectl create secret generic password --from-literal=ROOT_PASSWORD=reyaz123 (from cli)  --- literal meaning direct value
+
+-- kubectl create secret generic my-secret --from-env-file=vars (from file)
+
+-- kubectl get secrets
+
+-- kubectl describe secret my-secret   [Name of the secret is my-secret]
+
+-- kubectl set env deploy newdb --from=secrets/my-secret
+
+-- kubectl get pods  [This will fail because we have not mention the MYSQL_ prefix]
+
+-- kubectl set env deploy newdb --from=secret/my-secret --prefix=MYSQL_
+
+without passing prefix we cant make the pod running status
+
+TO SEE SECRETS:
+-------------
+-- kubectl get secrets my-secret -o yaml
+
+-- echo -n "LKJSKFHJHi" | base64 -d
+or
+-- echo -n "LKJSKFHJHi" | base64 --decode
+
+
+-- kubectl delete deploy newdb
+
+=====================================================================================================================================================
+
+===================
+SIDE CAR:
+===================
+
+It creates a helper container to main container.
+main container will have application and helper container will do help for main container.
+
+Adapter Design Pattern:
+----------------------
+standardize the output pattern of main container.
+
+Ambassador Design Pattern:
+-------------------------
+used to connect containers with the outside world
+
+Init Container:
+--------------
+it initialize the first work and exits later.
+
+​A sidecar container is a secondary container that runs alongside the main application container within the same Kubernetes Pod. This design pattern allows you to extend or enhance the functionality of the main application without modifying its code. Common use cases include log aggregation, data synchronization, and proxying network traffic.​
+
+
+Example: Log Aggregation with a Sidecar Container
+-------------------------------------------------
+Below is a YAML configuration for a Pod that demonstrates the sidecar pattern. In this example, the main application container writes log data to a shared volume, and the sidecar container serves these logs over HTTP using Nginx
+
+vi sidecar.yml
+
+apiVersion: v1
+kind: Pod
+metadata:
+  name: log-aggregator-pod
+spec:
+  containers:
+    - name: app-container
+      image: alpine
+      command: ["/bin/sh", "-c"]
+      args: ["while true; do date >> /var/log/app.log; sleep 5; done"]
+      volumeMounts:
+        - name: shared-logs
+          mountPath: /var/log
+    - name: sidecar-container
+      image: nginx
+      volumeMounts:
+        - name: shared-logs
+          mountPath: /usr/share/nginx/html
+  volumes:
+    - name: shared-logs
+      emptyDir: {}
+
+
+
+Explanation:
+------------
+Main Application Container (app-container):
+------------------------------------------
+Uses the alpine image, a minimal Docker image based on Alpine Linux.​
+Executes a shell command that appends the current date and time to /var/log/app.log every five seconds.​
+Mounts a shared volume at /var/log to store log data.​
+
+Sidecar Container (sidecar-container):
+------------------------------------
+Uses the nginx image to serve content over HTTP.​
+Mounts the same shared volume at /usr/share/nginx/html, which is the default directory Nginx serves files from.​
+As a result, Nginx serves the app.log file, allowing access to the application's log data via HTTP.​
+
+Shared Volume (shared-logs):
+-----------------------------
+An emptyDir volume that is created when the Pod is assigned to a node and exists as long as the Pod is running.​
+Provides a shared storage space accessible to both containers for log data.​
+
+emptyDir a temporary directory that exists as long as the Pod runs.
+
+
+-- kubectl apply -f sidecar.yaml
+
+-- kubectl get pods
+
+-- kubectl describe pods
+
+-- kubectl exec -it log-aggregator-pod -c sidecar-container -- sh
+
+        cd /usr/share/nginx/html
+        cat app.log
+
+we can see app.logs which is generated in app-container but can be accessed from side-car container using shared volumes
+
+-- kubectl delete -f sidecar.yml
+
+===================
+INGRESS
+===================
+
+Ingress is a service to expose application, but we already have cluster ip, node port and load balancer , let see
+
+Ingress helps to expose HTTP and HTTPS routes from outside of the CLuster
+Ingress supports Host based routing and path based routing
+ingress supports load balancing and SSL termination
+IT redirect the incoming requests to the right services based on the web url or path in the address
+ingress provides encryption feature and helps to balance the load of the applications
+
+Explain Host based and Path based
+-----------------------------------
+Host Based Routing: ex: boom.com, web.boom.com, admin.boom.com
+Path based routing: boom.com/hello , boom.com/admin, Paytm.com/movies, Paytm.com/recharge etc
+
+but services like load balancer, cluster ip, node port etc donest have these features
+
+General load balancer routes the traffic based on ports and cant handle URL based routing
+
+kubectl get ing --> shows ingress service , no ingress service
+
+To install ingress, firstly we have to install nginx ingress controller:
+command:
+
+-- kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.3.0/deploy/static/provider/cloud/deploy.yaml
+
+kubectl get pods
+kubectl get deploy
+kubectl get svc
+kubectl get ingress
+kubectl get service
+
+
+if required
+-----------
+kubectl delete svc internetbanking
+kubectl delete svc mobilebanking
+kubectl delete deploy internetbanking
+
+
+
+
+------------------------------------------------
+
+vi httpd.yml
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: httpd  
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: httpd
+  template:
+    metadata:
+      labels:
+        app: httpd
+    spec:
+      containers:
+      - name: httpd
+        image: httpd
+        ports:
+        - containerPort: 80
+        env:
+        - name: TITLE
+          value: "APACHE APP2"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: httpd  
+spec:
+  type: ClusterIP
+  ports:
+  - port: 80
+  selector:
+    app: httpd
+
+----------------------------------------
+
+vi nginx.yml
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nginx  
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: nginx
+  template:
+    metadata:
+      labels:
+        app: nginx
+    spec:
+      containers:
+      - name: nginx
+        image: nginx
+        ports:
+        - containerPort: 80
+        env:
+        - name: TITLE
+          value: "NGINX APP1"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: nginx  
+spec:
+  type: ClusterIP
+  ports:
+  - port: 80
+  selector:
+    app: nginx
+
+
+------------------------------------
+
+
+
+
+vi ingress.yml
+
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: k8s-ingress
+  annotations:
+    nginx.ingress.kubernetes.io/ssl-redirect: "false"
+    nginx.ingress.kubernetes.io/use-regex: "true"
+    nginx.ingress.kubernetes.io/rewrite-target: /$2
+spec:
+  ingressClassName: nginx
+  rules:
+    - http:
+        paths:
+          - path: /nginx(/|$)(.*)
+            pathType: ImplementationSpecific
+            backend:
+              service:
+                name: nginx
+                port:
+                  number: 80
+          - path: /httpd(/|$)(.*)
+            pathType: ImplementationSpecific
+            backend:
+              service:
+                name: httpd
+                port:
+                  number: 80
+          - path: /(.*)
+            pathType: ImplementationSpecific
+            backend:
+              service:
+                name: nginx
+                port:
+                  number: 80
+
+----------------------------------------------------
+
+kubectl apply -f httpd.yml
+
+kubectl apply -f nginx.yml
+
+kubectl apply -f ingress.yml
+
+
+-- kubectl get deploy
+-- kubectl get svc
+-- kubectl get pods
+-- kubectl get ingress
+
+-- kubectl get services ingress-nginx-controller --namespace=ingress-nginx
+
+Wait for 5 mins, it will create a ELB
+
+Allow All traffic in node security group
+
+Take the ELB and put in the browser http://elb/nginx and http://elb/httpd
+
+
+
+Now update vi httpd.yml --> image to trainerreyaz/wordcounter
+update vi nginx.yml --> image to trainerreyaz/ib-image:latest
+
+-- kubectl apply -f httpd.yml
+
+-- kubectl apply -f nginx.yml
+
+-- kubect get pods
+
+http://elb/nginx
+http://elb/httpd
+
+
+-- kubectl delete services ingress-nginx-controller --namespace=ingress-nginx
+
+
+Key Components:
+===============
+Annotations:
+------------
+nginx.ingress.kubernetes.io/ssl-redirect: "false": Disables automatic redirection from HTTP to HTTPS.​
+nginx.ingress.kubernetes.io/use-regex: "true": Enables the use of regular expressions in path matching. ​
+nginx.ingress.kubernetes.io/rewrite-target: /$2: Rewrites the matched URI to the specified target.​
+
+Rules:
+------
+Traffic matching /nginx, optionally followed by a / or end of the string, and any subsequent characters ((.*)), is directed to the nginx service.​
+Traffic matching /httpd, following the same pattern, is directed to the httpd service.​
+All other traffic (/(.*)) is directed to the nginx service.​
+Considerations:
+
+Path Matching:
+-------------
+The pathType: ImplementationSpecific allows the Ingress controller to interpret the path matching rules, including regular expressions. Ensure that your Ingress controller supports this path type and regex patterns.
+ ​
+Rewrite Target:
+---------------
+The nginx.ingress.kubernetes.io/rewrite-target: /$2 annotation rewrites the incoming request path to the specified target before forwarding it to the backend service. Ensure that this behavior aligns with your application's routing logic.
+
+=================================================================================================================
+
+Pod State : ImagePullBackOff:
+----------------------------
+When a kubelet starts creating containers for a Pod using a container runtime, it might be possible the container is in Waiting state because of ImagePullBackOff.
+
+The status ImagePullBackOff means that a container could not start because Kubernetes could not pull a container image for reasons such as
+
+Invalid image name or
+Pulling from a private registry without imagePullSecret.
+The BackOff part indicates that Kubernetes will keep trying to pull the image, with an increasing back-off delay.
+
+Kubernetes raises the delay between each attempt until it reaches a compiled-in limit, which is 300 seconds (5 minutes).
+
+
+Pod State: CrashLoopBackOff
+---------------------------
+
+When you see "CrashLoopBackOff," it means that kubelet is trying to run the container, but it keeps failing and crashing. After crashing, Kubernetes tries to restart the container automatically, but if the container keeps failing repeatedly, you end up in a loop of crashes and restarts, thus the term "CrashLoopBackOff."

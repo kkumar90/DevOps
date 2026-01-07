@@ -1,0 +1,528 @@
+==========================
+SERVICES - if you want to expose the application
+=========================
+
+Services allow you to expose your applications running on Pods to other components within the cluster or to external users.
+
+Services provide a stable IP address and DNS name for the set of Pods, which might change over time due to scaling or updates
+
+Key Concepts of Kubernetes Services:
+----------------------------------
+
+ClusterIP:
+---------
+
+This is the default type of Service. It exposes the Service on a cluster-internal IP. Other services within the same Kubernetes cluster can access the Service, but it is not accessible from outside the cluster.
+
+This creates a connection using an internal Cluster IP address and a Port.
+
+NodePort:
+---------
+
+This type of Service exposes the Service on each Node’s IP at a static port. A NodePort Service is accessible from outside the cluster by hitting the <NodeIP>:<NodePort>.
+
+When a NodePort is created, kube-proxy exposes a port in the range 30000-32767:
+
+TargetPort:
+-----------
+
+Pod Container port. Pod's container listens on applicationn port Ex: 80 or 8080, if you dont use this line, K8s will assign default 80 port
+
+
+LoadBalancer:
+-------------
+
+This Service type exposes the Service externally using a cloud provider’s load balancer. It is typically used in cloud environments like AWS, GCP, or Azure.
+
+A LoadBalancer is a Kubernetes service that:
+
+Creates a service like ClusterIP
+Opens a port in every node like NodePort
+Uses a LoadBalancer implementation from your cloud provider (your cloud provider needs to support this for LoadBalancers to work).
+
+
+
+-- kops get cluster
+
+-- kubectl get nodes
+
+-- kubectl get events  [This command is used to see all the cluster events]
+
+-- kubectl get svc   [By default kuberenets will create a default svc ]
+
+Let us create a new service
+
+vi service.yml
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ib-deployment
+  labels:
+    app: bank
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: bank
+  template:
+    metadata:
+      labels:
+        app: bank
+    spec:
+      containers:
+      - name: cont1
+        image: trainerreyaz/ib-image:latest
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ib-service
+spec:
+  type: ClusterIP
+  selector:
+    app: bank
+  ports:
+    - port: 80        # Exposes the service on port 80
+      targetPort: 80  #  Pod's container listens on 80, if you dont use this line, K8s will assign default 80 port
+
+
+How Traffic Flows
+Client connects to my-service:80
+Service forwards request to the Pod’s container at 8080 if 80 (because targetPort: 8080 / 80)
+The container in the Pod listens on 8080 / 80 and processes the request.
+
+targetport = Pod's container
+nodeport = Node's external port
+
+
+-- kubectl create -f service.yml    [To create deployment]
+
+-- kubectl get pods  [To get the list of the pods]
+
+-- kubectl get svc   [Get the list of services created]
+
+-- kubectl get pods -o wide  [Get the pods details ]
+
+-- kubectl describe svc ib-service  [Get the detailed description of service]
+
+===== This has clusterIP service, but  cannot exposed to internet, use this for databases which should be in private
+
+-- kubectl delete -f service.yml    [ This will delete service and deployment ]
+
+
+
+===============
+NodePort
+===============
+
+IT will expose our application in a particular port
+
+Range 30000 - 32767 (in SG, we need to give all traffic)
+
+if we don't specify any port K8s will pick randomly
+
+
+vi service.yml
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mb-deployment
+  labels:
+    app: bank
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: bank
+  template:
+    metadata:
+      labels:
+        app: bank
+    spec:
+      containers:
+      - name: cont1
+        image: trainerreyaz/mb-image:latest
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mb-service
+spec:
+  type: NodePort   # Type Nodeport, but if you dont mention port number under ports section, K8s will assign random port
+  selector:
+    app: bank
+  ports:
+    - port: 80
+      targetPort: 80  # Ensure this matches the container's port, if you dont use this line, K8s will assign default 80 port
+
+
+-- kubectl apply -f service.yml  [Can use create to create new resources , update is used to update on existing resources]
+
+-- kubectl describe svc mb-service
+
+-- kubectl get svc  [ See the output, it shows nodeport, port number is random ]
+
+Now http://IP:portnumber  it will not work as K8s will create a new vpc and SG, allow all traffic in new SG(nodes.reyaz.k8s.local)
+    Custom TCP = 31433 , custom=anywhere
+        All traffic , custom = anywhere
+
+==== if you want your own customized port , just edit the before file
+
+vi service.yml
+
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mb-deployment
+  labels:
+    app: bank
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: bank
+  template:
+    metadata:
+      labels:
+        app: bank
+    spec:
+      containers:
+      - name: cont1
+        image: reyadocker/mobilebankingrepo:latest
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mb-service
+spec:
+  type: NodePort
+  selector:
+    app: bank
+  ports:
+    - port: 80
+      targetPort: 80  # Ensure this matches the container's port, if you dont use this line, K8s will assign default 80 port
+      nodePort: 31433  # External access via <NodeIP>:31234 Must be in range 30000-32767
+
+
+Client accesses http://<NodeIP>:31234
+Traffic reaches Kubernetes Node on nodePort: 31234
+The service forwards it to port: 80 (internal Service port)
+Then it forwards the request to targetPort: 80 (inside the Pod’s container)
+
+
+-- kubectl apply -f service.yml   [ we can update existing deployment ]
+
+create vs apply : create will create new resources, apply for updating existing resources
+
+-- kubectl describe svc mb-service
+
+-- kubectl get svc
+
+http://IP:31433
+
+
+Drawback of nodeport : we should not give IP and port number to customer, he is not interested
+----------------
+
+====================================================================
+LoadBalancer - it will expose our app to customer using URL, map in R53
+====================================================================
+
+first delete the deployment
+
+-- kubectl delete -f service.yml
+
+
+vi service.yml
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: insurance-deployment
+  labels:
+    app: bank
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: bank
+  template:
+    metadata:
+      labels:
+        app: bank
+    spec:
+      containers:
+      - name: cont1
+        image: trainerreyaz/insurance-image:latest
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mb-service
+spec:
+  type: LoadBalancer
+  selector:
+    app: bank
+  ports:
+    - port: 80
+      targetPort: 80  # Ensure this matches the container's port, if you dont use this line, K8s will assign default 80 port
+      nodePort: 31433 # If you dont mention target and nodeports, K8s will generate random nodeport and target port 80
+
+
+-- kubectl create -f service.yml
+
+-- kubectl describe svc mb-service
+
+-- kubectl get svc  [Grab the elb, and see in AWS Console : ELB, Target Group. Wait for sometime to come InService]
+
+-- kubectl delete -f service.yml [if required]
+
+
+======================================================================================================================================================
+
+
+======================================================================================================================================================
+
+============================================
+
+Kubernetes Metric Server  - also called Heapster
+
+=============================================
+
+It's a scalable, efficient source for monitoring the overall health and performance of a Kubernetes cluster, providing the data needed for Kubernetes features like Horizontal Pod Autoscaler (HPA) and the Kubernetes Dashboard.
+
+Key Features:
+============
+
+Resource Metrics:
+----------------
+Collects CPU and memory usage metrics from the kubelets and provides aggregated metrics at the node and pod level.
+
+Autoscaling:
+------------
+Enables features like the Horizontal Pod Autoscaler (HPA), which automatically adjusts the number of pods in a deployment based on observed CPU or memory utilization.
+
+Kubernetes Dashboard:
+---------------------
+The Metrics Server provides the resource usage data displayed in the Kubernetes Dashboard.
+
+How Metrics Server Works:
+-------------------------
+
+Kubelets:
+--------
+Each node in a Kubernetes cluster runs a kubelet that periodically collects resource usage statistics from the node and the containers running on it.
+
+Metrics Server:
+-------------
+The Metrics Server collects these metrics from the kubelets and stores them in memory, aggregating them to be accessed by other components (like the HPA).
+
+
+In Short
+========
+
+This metric server in K8S will collect metrics information like cpu, ram etc for all pods and nodes in the cluster
+
+A single deployment that works on most clusters , collect metrics every 15 secs
+
+We can use kubectl top po/no to see the metrics
+
+-- kubectl top po/no   [ Will not work, as we don't have metric server configured ]
+
+Install Metric Server
+---------------------
+
+kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/high-availability-1.21+.yaml
+
+kubectl top pods     [ Wait for 2 mins ]
+
+kubectl top nodes/no
+
+========================
+Auto-Scaling
+========================
+
+HPA - Horizontal Pod Autoscaling - Scales the number of pods based on CPU/memory utilization or custom metrics.
+--------------------------------
+
+VPA  - Vertical Pod Autoscaling - Adjusts the CPU/memory requests/limits of a pod dynamically to improve resource allocation. you'll need to  
+--------------------------------  install the VPA components in your Kubernetes cluster, as it is not included by default.
+                                  Install the VPA Custom Resource Definitions (CRDs) seperately
+
+
+In K8S , a HPA automatically updates a workload resource (such as Deployment or ReplicaSet) based on demand.
+
+Give the value example 70%, if going more than 70% scale out and less than it will do Scale In
+
+Metric server will do the major role here as it will collects metrics , based on the value scale out and scale in happens
+
+Before scale In, process will wait for few mins to scale in to complete the traffic requests
+this is called COOLING PERIOD
+
+In Kubernetes, the cooling period for the Horizontal Pod Autoscaler (HPA) is the amount of time the HPA waits after a scale event before triggering another scale event.
+
+Scaling can be done only for Scalable Objects(Ex RS, Deployment and RC Replication Controller)
+
+Side note:  Replication Controller(RC), A Replication Controller in Kubernetes is an older mechanism used to ensure that a specified number of pod replicas are running at any given time. Now it is replaced with ReplicaSet
+
+vi auto.yml
+
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mb-deployment
+  labels:
+    app: bank
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: bank
+  template:
+    metadata:
+      labels:
+        app: bank
+    spec:
+      containers:
+      - name: cont1
+        image: reyadocker/mobilebankingrepo:latest
+
+
+-- kubectl create -f auto.yml
+
+-- kubectl get pods
+
+-- kubectl top pods
+
+Now lets autoscale the pods
+
+-- kubectl autoscale deployment mb-deployment --cpu-percent=20 --min=1 --max=10
+
+Autoscale deployment called mb-deployment if my cpu is more than 20%, scale out, min 1 , max 10
+
+-- kubectl get hpa    [ This wil show cpu: 1% / 20% , now cpu percent is 1%, it will take time ]
+
+Now lets stress the pod by installing stress inside pod, lets connect to pod using exec and install stress
+
+-- kubectl get pods
+
+-- kubectl exec -it mb-deployment-8585b755c5-c6fb7 -- /bin/bash
+
+         -- apt update
+         -- apt install stress
+         -- stress --cpu 8 --io 4 --vm 2 --vm-bytes 128M --timeout 60s
+         -- exit
+
+--cpu 8: Launches 8 CPU stressors, each consuming 100% CPU by performing continuous computations.​
+--io 4: Initiates 4 I/O stressors, each generating continuous I/O operations to stress the system's disk and filesystem.​
+--vm 2: Starts 2 virtual memory stressors, each allocating and deallocating memory repeatedly to test the system's memory management.​
+--vm-bytes 128M: Specifies that each virtual memory stressor should allocate 128 megabytes of memory.​
+--timeout 60s: Sets the duration of the stress test to 60 seconds, after which all stressors will terminate.
+
+
+
+
+open another terminal to watch the live pods
+
+-- kubectl get po --watch
+
+On main server
+
+-- kubectl top pods
+
+-- kubectl get hpa
+
+-- kubectl get pods
+
+-- kubectl describe hpa mb-deployment     [ This will show scaling activities ]
+
+-- kubectl get events   [ This will also show same things ]
+
+-- kubectl logs mb-deployment-8585b755c5-p2bzv   [ To see logs of the pod ]
+
+After few mins, scale in happens as we dont have load.
+
+-- kubectl delete -f auto.yml
+
+Example using Manifestfile
+--------------------------
+
+First we need to have deployment and then we can autscale on that deployment / deployment name
+
+vi auto.yml
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ib-deployment
+  labels:
+    app: bank
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: bank
+  template:
+    metadata:
+      labels:
+        app: bank
+    spec:
+      containers:
+      - name: cont1
+        image: reyadocker/internetbankingrepo:latest
+
+
+-- kubectl apply -f auto.yml
+
+--------------------------------
+
+vi hpa.yml
+
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: ib-hpa
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: ib-deployment
+  minReplicas: 2
+  maxReplicas: 10
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 20
+
+
+scaleTargetRef specifies the target deployment (ib-deployment) for scaling
+
+
+-- kubectl apply -f hpa.yml
+
+Open another tab --> kubectl get pods --watch
+
+-- kubectl get hpa
+
+-- kubectl get pods
+
+-- kubectl exec -it mb-deployment-8585b755c5-c6fb7 -- /bin/bash
+
+         -- apt update
+         -- apt install stress
+         -- stress --cpu 8 --io 4 --vm 2 --vm-bytes 128M --timeout 60s
+         -- exit
+
+-- kubectl get hpa
+
+
+Note: if you want to delete metric server , just instead apply, use delete
+
+kubectl delete -f https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/high-availability-1.21+.yaml
