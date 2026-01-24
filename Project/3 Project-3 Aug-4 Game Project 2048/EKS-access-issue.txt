@@ -1,0 +1,144 @@
+https://docs.aws.amazon.com/eks/latest/userguide/view-kubernetes-resources.html#view-kubernetes-resources-permissions
+
+
+	
+-- kubectl apply -f https://s3.us-west-2.amazonaws.com/amazon-eks/docs/eks-console-full-access.yaml
+
+View Kubernetes resources in a specific namespace
+
+The namespace in this file is default. The group name in the file is eks-console-dashboard-restricted-access-group. Apply the manifest to your cluster with the following command:
+
+
+-- kubectl apply -f https://s3.us-west-2.amazonaws.com/amazon-eks/docs/eks-console-restricted-access.yaml
+
+
+If you need to change the Kubernetes group name, namespace, permissions, or any other configuration in the file, then download the file and edit it before applying it to your cluster:
+
+Download the file with one of the following commands:
+
+
+-- curl -O https://s3.us-west-2.amazonaws.com/amazon-eks/docs/eks-console-full-access.yaml
+
+-- curl -O https://s3.us-west-2.amazonaws.com/amazon-eks/docs/eks-console-restricted-access.yaml
+
+Apply the manifest to your cluster with one of the following commands:
+
+
+-- kubectl apply -f eks-console-full-access.yaml
+
+-- kubectl apply -f eks-console-restricted-access.yaml
+
+
+-- eksctl get iamidentitymapping --cluster EKS_CLUSTER --region=ap-south-1
+
+An example output is as follows.
+-------------------------------
+
+ARN                                                                                             USERNAME                                GROUPS                          ACCOUNT
+arn:aws:iam::111122223333:role/eksctl-my-cluster-my-nodegroup-NodeInstanceRole-1XLS7754U3ZPA    system:node:{{EC2PrivateDNSName}}       system:bootstrappers,system:nodes
+
+
+Add a mapping for a role. This example assume that you attached the IAM permissions in the first step to a role named my-console-viewer-role
+
+eksctl create iamidentitymapping \
+    --cluster EKS_CLUSTER \
+    --region=ap-south-1 \
+    --arn arn:aws:iam::289857919920:role/my-console-viewer-role \
+    --group eks-console-dashboard-full-access-group \
+    --no-duplicate-arns
+
+
+Add a mapping for a user. IAM best practices recommend that you grant permissions to roles instead of users. This example assume that you attached the IAM permissions in the first step to a user named reya.
+
+eksctl create iamidentitymapping \
+    --cluster EKS_CLUSTER \
+    --region=ap-south-1 \
+    --arn arn:aws:iam::289857919920:user/reya \
+    --group eks-console-dashboard-restricted-access-group \
+    --no-duplicate-arns
+
+
+View the mappings in the ConfigMap again.
+----------------------------------------
+
+-- eksctl get iamidentitymapping --cluster EKS_CLUSTER --region=ap-south-1
+
+Edit ConfigMap manually
+------------------------
+
+-- kubectl edit -n kube-system configmap/aws-auth
+
+Compare and add few lines [added] mentioned
+
+apiVersion: v1
+data:
+  mapRoles: |
+    - groups:
+      - system:bootstrappers
+      - system:nodes
+      rolearn: arn:aws:iam::289857919920:role/eks-node-group-cloud
+      username: system:node:{{EC2PrivateDNSName}}
+    - groups:
+      - eks-console-dashboard-full-access-group
+      rolearn: arn:aws:iam::289857919920:role/my-console-viewer-role
+      username: my-console-viewer-role  [added]
+  mapUsers: |
+    - groups:
+      - eks-console-dashboard-restricted-access-group
+      userarn: arn:aws:iam::289857919920:user/reya
+      username: reya [added]
+kind: ConfigMap
+metadata:
+  creationTimestamp: "2025-03-23T09:24:41Z"
+  name: aws-auth
+  namespace: kube-system
+  resourceVersion: "3658"
+  uid: 09886716-edf9-43d0-b15e-2e2eed47d1ba
+
+
+
+kubectl auth can-i list pods --as=reya
+
+
+
+vi cluster-role.yaml
+
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: pod-reader
+rules:
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["get", "list"]
+
+
+kubectl apply -f cluster-role.yaml
+
+
+vi cluster-admin-binding.yaml
+
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: reya-cluster-admin
+subjects:
+- kind: User
+  name: reya  # Replace with the actual username
+  apiGroup: rbac.authorization.k8s.io
+roleRef:
+  kind: ClusterRole
+  name: cluster-admin
+  apiGroup: rbac.authorization.k8s.io
+
+
+kubectl apply -f cluster-admin-binding.yaml
+
+kubectl auth can-i list pods --as=reya
+
+kubectl auth can-i '*' '*' --as=reya
+
+
+
+
+

@@ -1,0 +1,132 @@
+FLASK - MYSQL - EKS DevOps Project
+==================================
+
+
+Launch EC2 amazon Linux 2 
+Install AWSCLI, see already exits or not
+Create a ROLE, eks-admin and give admin permissions
+
+Install and Configure AWSCLI
+===========================
+
+aws configure
+
+Install Kubectl on machine
+=================
+
+sudo yum update -y
+curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+
+chmod +x ./kubectl
+
+mkdir -p $HOME/bin && cp ./kubectl $HOME/bin/kubectl && export PATH=$HOME/bin:$PATH
+echo 'export PATH=$HOME/bin:$PATH' >> ~/.bashrc
+kubectl version
+
+install EKSCTL
+==========
+
+
+curl --silent --location "https://github.com/weaveworks/eksctl/releases/latest/download/eksctl_$(uname -s)_amd64.tar.gz" | tar xz -C /tmp
+
+sudo mv /tmp/eksctl /usr/local/bin
+
+export PATH=$PATH:/usr/local/bin/
+
+eksctl version
+
+
+Now Create EKS Cluster
+===================
+
+eksctl create cluster --name reyaz-cluster --region ap-south-1 --node-type t2.small --nodes-min 2 --nodes-max 3
+
+eksctl get cluster
+
+kubectl get nodes -- if you get errors , 
+
+the error message “error: exec plugin: invalid apiVersion client.authentication.k8s.io/v1alpha1” occurs when the kubectl the version you are using is incompatible with the API version of your Kubernetes cluster. To resolve this error, you can upgrade your kubectl version, update your resource definition files, or upgrade your Kubernetes cluster to ensure compatibility.
+
+------------
+mv kubectl kubectl_1.24
+mv bin bin_1.24   -- -if this doesn't work, go to /root -- bin is there
+curl -O https://s3.us-west-2.amazonaws.com/amazon-eks/1.23.15/2023-01-11/bin/linux/amd64/kubectl
+chmod +x ./kubectl
+mkdir -p $HOME/bin && cp ./kubectl $HOME/bin/kubectl && export PATH=$PATH:$HOME/bin
+kubectl version
+
+aws eks update-kubeconfig --name reyaz-cluster --region ap-south-1
+
+kubectl get nodes
+
+
+****if required*****
+curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+unzip awscliv2.zip
+sudo ./aws/install --update
+
+
+---------------
+
+install GIT
+---------
+
+yum install git -y
+
+git clone https://github.com/ReyazShaik/eks-flask-mysql-project.git
+
+cd eks-flask-mysql-project
+
+cd eks-manifests
+
+kubectl apply -f mysql-secrets.yml -f mysql-configmap.yml -f mysql-deployment.yml -f mysql-svc.yml
+
+kubectl apply -f two-tier-app-deployment.yml -f two-tier-app-svc.yml
+
+kubectl get all
+
+kubectl get deploy
+
+to restart
+
+kubectl rollout restart deployment two-tier-app
+
+kubectl delete deployment two-tier-app mysql
+kubectl delete service two-tier-app-service mysql 
+
+eksctl delete cluster --name reyaz-cluster --region ap-south-1
+
+
+==============
+No Need
+============
+
+
+yum install -y docker
+systemctl start docker
+   97  git clone https://github.com/ReyazShaik/eks-flask-mysql-project.git
+   98  ls
+   99  cd eks-flask-mysql-project/
+  100  ls
+  101  docker build -t eks-flask-mysql-project .
+  104  docker login
+  105  docker images
+  108  docker tag eks-flask-mysql-project:latest reyadocker/eks-flask-mysql-project
+  110  docker push reyadocker/eks-flask-mysql-project
+  111  kubectl get all
+  112  kubectl delete deployment two-tier-app mysql
+  113  kubectl delete service two-tier-app-service MySQL
+       cd eks-manifests/
+  114  kubectl apply -f mysql-secrets.yml -f mysql-configmap.yml -f mysql-deployment.yml -f mysql-svc.yml
+ 
+  117  kubectl apply -f two-tier-app-deployment.yml -f two-tier-app-svc.yml
+  118  kubectl get all
+
+
+---- git clone on your amazon Linux machine, modify the code
+ delete all the images
+docker rmi imageids
+docker build -t eks-flask-mysql-project .
+and follow above commands
+
+

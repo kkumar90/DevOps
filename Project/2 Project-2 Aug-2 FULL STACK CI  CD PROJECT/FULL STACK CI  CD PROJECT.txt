@@ -1,0 +1,10 @@
+FULL STACK CI / CD PROJECT
+
+Clone my https://github.com/ReyazShaik/aws-cicd-react-node-mysql-app.git
+
+And by the way, i have resolved the issue. 
+
+While putting internal load balancer url in web-tier-user-data.txt , it didnt put http instead i used put DNS 
+for that reason nginx has syntax error.
+
+change that to http://elbdns
